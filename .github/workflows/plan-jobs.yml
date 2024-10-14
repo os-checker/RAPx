@@ -14,13 +14,14 @@ jobs:
     steps:
       - name: Install Z3
         run: |
+          brew install llvm
           brew install z3
-          ls -alh /opt/homebrew/Cellar/z3/4.13.2
-          brew install tree
-          tree /opt/homebrew/Cellar/z3/4.13.2
-          echo 'Z3_SYS_Z3_HEADER=/opt/homebrew/Cellar/z3/4.13.2/include' >> $GITHUB_ENV
-          echo "C_INCLUDE_PATH=/opt/homebrew/Cellar/z3/4.13.2/include:$C_INCLUDE_PATH" >> $GITHUB_ENV
-          sudo mkdir -p /usr/local/lib
-          sudo ln -s /opt/homebrew/Cellar/z3/4.13.2/lib/libz3.dylib /usr/local/lib/libz3.dylib
+          # ls -alh /opt/homebrew/Cellar/z3/4.13.2
+          # brew install tree
+          # tree /opt/homebrew/Cellar/z3/4.13.2
+          # echo 'Z3_SYS_Z3_HEADER=/opt/homebrew/Cellar/z3/4.13.2/include' >> $GITHUB_ENV
+          # echo "C_INCLUDE_PATH=/opt/homebrew/Cellar/z3/4.13.2/include:$C_INCLUDE_PATH" >> $GITHUB_ENV
+          # sudo mkdir -p /usr/local/lib
+          # sudo ln -s /opt/homebrew/Cellar/z3/4.13.2/lib/libz3.dylib /usr/local/lib/libz3.dylib
 
 
