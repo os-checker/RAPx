@@ -7,7 +7,7 @@ on:
 
 env:
   z3: /opt/homebrew/Cellar/z3/4.13.2
-  Z3_SYS_Z3_HEADER: /opt/homebrew/Cellar/z3/4.13.2/include
+  Z3_SYS_Z3_HEADER: /opt/homebrew/Cellar/z3/4.13.2/include/z3.h
 
 jobs:
   install-z3:
