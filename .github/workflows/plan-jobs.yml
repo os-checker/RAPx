@@ -17,6 +17,8 @@ jobs:
         run: |
           brew install z3
           ls -alh /opt/homebrew/Cellar/z3/4.13.2
+          brew install tree
+          tree /opt/homebrew/Cellar/z3/4.13.2
           export C_INCLUDE_PATH=${{ env.z3 }}/include:$C_INCLUDE_PATH 
           # sudo mkdir -p /usr/local/lib
           # sudo ln -s ${{ env.z3 }}/lib/libz3.dylib /usr/local/lib/libz3.dylib
