@@ -5,10 +5,17 @@ on:
   # your main workflow job
   workflow_call:
 
+env:
+  z3: /opt/homebrew/Cellar/z3/4.13.2
+
 jobs:
   install-z3:
     runs-on: macos-latest
     steps:
       - name: Install Z3
-        run: brew install z3
+        run: |
+          brew install z3
+          export C_INCLUDE_PATH=${{ env.z3 }}/include:$C_INCLUDE_PATH 
+          ln -s ${{ env.z3 }}/lib/libz3.dylib /usr/local/lib/libz3.dylib
+
 
