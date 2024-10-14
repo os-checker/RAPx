@@ -1,0 +1,14 @@
+name: Prepare Z3
+
+on:
+  # Defining workflow_call means that this workflow can be called from
+  # your main workflow job
+  workflow_call:
+
+jobs:
+  install-z3:
+    runs-on: macos-latest
+    steps:
+      - name: Install Z3
+        run: brew install z3
+
