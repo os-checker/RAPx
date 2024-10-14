@@ -6,9 +6,9 @@ on:
   workflow_call:
 
 jobs:
-  greeter:
+  install-z3:
     runs-on: ubuntu-latest
-    install-z3:
+    steps:
       - name: Install Z3
         run: |
           sudo apt update 
