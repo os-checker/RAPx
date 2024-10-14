@@ -3,6 +3,7 @@ name = "rap"
 version = "1.0.0"
 edition = "2018"
 authors = ["Moran Tsui <cuimohan@fudan.edu.cn>"]
+repository = "https://github.com/os-checker/rap"
 default-run = "rap"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -33,3 +34,24 @@ colorful = "0.2.1"
 
 [features]
 backtraces = ["snafu/backtraces", "snafu/backtraces-impl-backtrace-crate"]
+
+# The profile that 'cargo dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
+
+# Config for 'cargo dist'
+[workspace.metadata.dist]
+# The preferred cargo-dist version to use in CI (Cargo.toml SemVer syntax)
+cargo-dist-version = "0.22.1"
+# CI backends to support
+ci = "github"
+# The installers to generate for each app
+installers = ["shell"]
+# Target platforms to build apps for (Rust target-triple syntax)
+targets = ["x86_64-unknown-linux-gnu"]
+# Path that installers should place binaries in
+install-path = "CARGO_HOME"
+# Whether to install an updater program
+install-updater = false
+plan-jobs = ["./plan-jobs.yml"]
