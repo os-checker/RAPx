@@ -16,6 +16,7 @@ jobs:
         run: |
           brew install z3
           export C_INCLUDE_PATH=${{ env.z3 }}/include:$C_INCLUDE_PATH 
+          mkdir -p /usr/local/lib
           ln -s ${{ env.z3 }}/lib/libz3.dylib /usr/local/lib/libz3.dylib
 
 
