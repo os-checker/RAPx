@@ -18,7 +18,7 @@ jobs:
           ls -alh /opt/homebrew/Cellar/z3/4.13.2
           brew install tree
           tree /opt/homebrew/Cellar/z3/4.13.2
-          echo 'Z3_SYS_Z3_HEADER=/opt/homebrew/Cellar/z3/4.13.2/include/z3.h' >> $GITHUB_ENV
+          echo 'Z3_SYS_Z3_HEADER=/opt/homebrew/Cellar/z3/4.13.2/include' >> $GITHUB_ENV
           echo "C_INCLUDE_PATH=/opt/homebrew/Cellar/z3/4.13.2/include:$C_INCLUDE_PATH" >> $GITHUB_ENV
           # sudo mkdir -p /usr/local/lib
           # sudo ln -s ${{ env.z3 }}/lib/libz3.dylib /usr/local/lib/libz3.dylib
