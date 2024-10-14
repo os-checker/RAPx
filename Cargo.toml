@@ -1,6 +1,6 @@
 [workspace]
 members = ["rap"]
-
+exclude = ["tests"]
 
 # The profile that 'cargo dist' will build with
 [profile.dist]
