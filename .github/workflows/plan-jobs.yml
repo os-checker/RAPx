@@ -8,9 +8,8 @@ on:
 jobs:
   greeter:
     runs-on: ubuntu-latest
-    steps:
-      - name: Step 1
+    install-z3:
+      - name: Install Z3
         run: |
-          echo "Hello!"
-          echo "Plan is: ${PLAN}"
-          apt update && apt install git libz3-dev curl gcc pkg-config libssl-dev clang cmake -y
+          sudo apt update 
+          sudo apt install git libz3-dev curl gcc pkg-config libssl-dev clang cmake -y
