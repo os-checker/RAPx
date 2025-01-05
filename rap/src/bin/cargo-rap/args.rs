@@ -75,6 +75,7 @@ impl Arguments {
             None => return false,
         };
         entry_path.is_relative()
+            || entry_path.ends_with("lib/rustlib/src/rust/library/std/src/lib.rs")
     }
 }
 
