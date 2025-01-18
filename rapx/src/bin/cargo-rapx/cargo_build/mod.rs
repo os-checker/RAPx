@@ -6,7 +6,7 @@ use wait_timeout::ChildExt;
 
 mod workspace;
 
-pub fn run() {
+pub fn exec() {
     match env::var("RAP_RECURSIVE")
         .ok()
         .map(|s| s.trim().to_ascii_lowercase())
@@ -21,19 +21,22 @@ pub fn run() {
     }
 }
 
-fn cargo_check(dir: &Utf8Path) {
+fn cargo_build(dir: &Utf8Path) {
     // always clean before check due to outdated except `RAP_CLEAN` is false
     rap_trace!("cargo clean in package folder {dir}");
     cargo_clean(dir, args::rap_clean());
 
-    rap_trace!("cargo check in package folder {dir}");
+    rap_trace!("cargo build in package folder {dir}");
     let [rap_args, cargo_args] = args::rap_and_cargo_args();
     rap_trace!("rap_args={rap_args:?}\tcargo_args={cargo_args:?}");
 
-    /*Here we prepare the cargo command as cargo check, which is similar to build, but much faster*/
+    // cargo build is necessary:
+    // https://github.com/rust-lang/rfcs/blob/master/text/3477-cargo-check-lang-policy.md
+    //
+    // > * cargo build catches all Rust compilation errors.
     let mut cmd = Command::new("cargo");
     cmd.current_dir(dir);
-    cmd.arg("check");
+    cmd.arg("build");
 
     /* set the target as a filter for phase_rustc_rap */
     cmd.args(cargo_args);
@@ -53,7 +56,7 @@ fn cargo_check(dir: &Utf8Path) {
 
     rap_trace!("Command is: {:?}.", cmd);
 
-    let mut child = cmd.spawn().expect("Could not run cargo check.");
+    let mut child = cmd.spawn().expect("Could not run cargo build.");
     match child
         .wait_timeout(Duration::from_secs(60 * 60)) // 1 hour timeout
         .expect("Failed to wait for subprocess.")
@@ -79,7 +82,7 @@ fn cargo_clean(dir: &Utf8Path, really: bool) {
     }
 }
 
-/// Just like running a cargo check in a folder.
+/// Just like running a cargo build in a folder.
 fn default_run() {
-    cargo_check(".".into());
+    cargo_build(".".into());
 }

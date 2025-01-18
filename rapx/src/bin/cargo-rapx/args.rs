@@ -95,10 +95,10 @@ pub fn get_arg_flag_value(name: &str) -> Option<&'static str> {
     ARGS.get_arg_flag_value(name)
 }
 
-/// `cargo rapx [rapx options] -- [cargo check options]`
+/// `cargo rapx [rapx options] -- [cargo check build]`
 ///
 /// Options before the first `--` are arguments forwarding to rapx.
-/// Stuff all after the first `--` are arguments forwarding to cargo check.
+/// Stuff all after the first `--` are arguments forwarding to cargo build.
 pub fn rap_and_cargo_args() -> [&'static [String]; 2] {
     [&ARGS.args_group1, &ARGS.args_group2]
 }

@@ -15,7 +15,7 @@ mod help;
 mod utils;
 use crate::utils::*;
 
-mod cargo_check;
+mod cargo_build;
 
 fn phase_cargo_rap() {
     rap_trace!("Start cargo-rapx.");
@@ -37,11 +37,11 @@ fn phase_cargo_rap() {
         _ => {}
     }
 
-    cargo_check::run();
+    cargo_build::exec();
 }
 
 fn phase_rustc_wrapper() {
-    rap_trace!("Launch cargo-rapx again triggered by cargo check.");
+    rap_trace!("Launch cargo-rapx again triggered by cargo build.");
 
     let is_direct = args::is_current_compile_crate();
     // rapx only checks local crates
@@ -57,8 +57,8 @@ fn phase_rustc_wrapper() {
 fn main() {
     /* This function will be enteredd twice:
        1. When we run `cargo rapx ...`, cargo dispatches the execution to cargo-rapx.
-      In this step, we set RUSTC_WRAPPER to cargo-rapx, and execute `cargo check ...` command;
-       2. Cargo check actually triggers `path/cargo-rapx path/rustc` according to RUSTC_WRAPPER.
+       In this step, we set RUSTC_WRAPPER to cargo-rapx, and execute `cargo build ...` command;
+       2. cargo build actually triggers `path/cargo-rapx path/rustc` according to RUSTC_WRAPPER.
           Because RUSTC_WRAPPER is defined, Cargo calls the command: `$RUSTC_WRAPPER path/rustc ...`
     */
 

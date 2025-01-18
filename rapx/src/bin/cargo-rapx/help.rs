@@ -1,6 +1,6 @@
 pub const RAPX_HELP: &str = r#"
 Usage:
-    cargo rapx [rapx options] -- [cargo check options]
+    cargo rapx [rapx options] -- [cargo build options]
 
 RAPx Options:
 

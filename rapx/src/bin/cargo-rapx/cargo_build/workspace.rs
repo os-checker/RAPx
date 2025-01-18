@@ -5,7 +5,7 @@ use cargo_metadata::{
 use rapx::utils::log::rap_error_and_exit;
 use std::collections::BTreeMap;
 
-/// Run cargo check in each member folder under current workspace.
+/// Run cargo build in each member folder under current workspace.
 pub fn shallow_run() {
     let cargo_toml = Utf8Path::new("Cargo.toml");
     if !cargo_toml.exists() {
@@ -15,7 +15,7 @@ pub fn shallow_run() {
     check_members(&ws_metadata);
 }
 
-/// Recursively run cargo check in each package folder from current folder.
+/// Recursively run cargo build in each package folder from current folder.
 pub fn deep_run() {
     let cargo_tomls = get_cargo_tomls_deep_recursively(".");
     for ws_metadata in workspaces(&cargo_tomls).values() {
@@ -31,7 +31,7 @@ fn check_members(ws_metadata: &Metadata) {
     super::cargo_clean(ws_root, true);
 
     for pkg_folder in get_member_folders(ws_metadata) {
-        super::cargo_check(pkg_folder);
+        super::cargo_build(pkg_folder);
     }
 }
 
