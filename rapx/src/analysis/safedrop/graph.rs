@@ -42,10 +42,10 @@ impl<'tcx> Assignment<'tcx> {
         span: Span,
     ) -> Assignment<'tcx> {
         Assignment {
-            lv: lv,
-            rv: rv,
-            atype: atype,
-            span: span,
+            lv,
+            rv,
+            atype,
+            span,
         }
     }
 }
@@ -78,8 +78,8 @@ pub struct BlockNode<'tcx> {
 impl<'tcx> BlockNode<'tcx> {
     pub fn new(index: usize, is_cleanup: bool) -> BlockNode<'tcx> {
         BlockNode {
-            index: index,
-            is_cleanup: is_cleanup,
+            index,
+            is_cleanup,
             next: FxHashSet::<usize>::default(),
             assignments: Vec::<Assignment<'tcx>>::new(),
             calls: Vec::<Terminator<'tcx>>::new(),
@@ -113,13 +113,13 @@ pub struct ValueNode {
 impl ValueNode {
     pub fn new(index: usize, local: usize, need_drop: bool, may_drop: bool) -> Self {
         ValueNode {
-            index: index,
-            local: local,
-            need_drop: need_drop,
+            index,
+            local,
+            need_drop,
             father: local,
             field_id: usize::MAX,
             birth: 0,
-            may_drop: may_drop,
+            may_drop,
             kind: TyKind::Adt,
             fields: FxHashMap::default(),
         }
@@ -138,7 +138,7 @@ impl ValueNode {
     }
 
     pub fn is_ptr(&self) -> bool {
-        return self.kind == TyKind::RawPtr || self.kind == TyKind::Ref;
+        self.kind == TyKind::RawPtr || self.kind == TyKind::Ref
     }
 
     pub fn is_ref(&self) -> bool {
@@ -227,10 +227,10 @@ impl<'tcx> SafeDropGraph<'tcx> {
             // handle general statements
             for stmt in &basicblocks[iter].statements {
                 /* Assign is a tuple defined as Assign(Box<(Place<'tcx>, Rvalue<'tcx>)>) */
-                let span = stmt.source_info.span.clone();
+                let span = stmt.source_info.span;
                 if let StatementKind::Assign(ref assign) = stmt.kind {
                     let lv_local = assign.0.local.as_usize(); // assign.0 is a Place
-                    let lv = assign.0.clone();
+                    let lv = assign.0;
                     cur_bb.modified_value.insert(lv_local);
                     match assign.1 {
                         // assign.1 is a Rvalue
@@ -486,12 +486,12 @@ impl<'tcx> SafeDropGraph<'tcx> {
 
         SafeDropGraph {
             def_id: def_id.clone(),
-            tcx: tcx,
+            tcx,
             span: body.span,
-            blocks: blocks,
-            values: values,
-            arg_size: arg_size,
-            scc_indices: scc_indices,
+            blocks,
+            values,
+            arg_size,
+            scc_indices,
             constant: FxHashMap::default(),
             return_set: FxHashSet::default(),
             bug_records: BugRecords::new(),
@@ -522,10 +522,8 @@ impl<'tcx> SafeDropGraph<'tcx> {
             if dfn[target] == 0 {
                 self.tarjan(target, stack, instack, dfn, low, time);
                 low[index] = min(low[index], low[target]);
-            } else {
-                if instack.contains(&target) {
-                    low[index] = min(low[index], dfn[target]);
-                }
+            } else if instack.contains(&target) {
+                low[index] = min(low[index], dfn[target]);
             }
         }
 
