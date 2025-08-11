@@ -1,9 +1,10 @@
 #![feature(rustc_private)]
 #![feature(box_patterns)]
 #[macro_use]
-pub mod utils;
+pub mod init;
 pub mod analysis;
 pub mod preprocess;
+pub mod utils;
 extern crate intervals;
 extern crate rustc_abi;
 extern crate rustc_ast;
@@ -327,6 +328,7 @@ impl RapCallback {
 
 /// Start the analysis with the features enabled.
 pub fn start_analyzer(tcx: TyCtxt, callback: RapCallback) {
+    init::set_intrinsic_fn(tcx);
     if callback.is_alias_enabled() {
         let mut analyzer = AliasAnalyzer::new(tcx);
         analyzer.run();

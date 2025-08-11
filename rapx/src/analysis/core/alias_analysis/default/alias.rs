@@ -1,9 +1,7 @@
 use super::{graph::*, types::*};
 use crate::{
-    analysis::{
-        core::alias_analysis::default::{MopAAFact, MopAAResultMap},
-        utils::intrinsic_id::*,
-    },
+    analysis::core::alias_analysis::default::{MopAAFact, MopAAResultMap},
+    init::*,
     rap_debug,
 };
 use rustc_hir::def_id::DefId;
@@ -120,7 +118,7 @@ impl<'tcx> MopGraph<'tcx> {
                                 recursion_set.remove(target_id);
                             }
                         } else if self.values[lv].may_drop {
-                            if target_id.index.as_usize() == CALL_MUT {
+                            if Some(&target_id.index.as_usize()) == CALL_MUT.get() {
                                 continue;
                             }
 

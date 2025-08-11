@@ -1,12 +1,22 @@
 use rustc_hir::Node::*;
 use rustc_middle::ty::TyCtxt;
-use rustc_span::def_id::DefId;
-use rustc_span::symbol::Symbol;
-use rustc_span::{FileName, FileNameDisplayPreference};
+use rustc_span::{
+    def_id::{CrateNum, DefId},
+    symbol::Symbol,
+    FileName, FileNameDisplayPreference,
+};
 
 extern crate rustc_hir;
 extern crate rustc_middle;
 extern crate rustc_span;
+
+pub fn get_crate_num<'tcx>(tcx: TyCtxt<'tcx>, name: &str) -> Option<CrateNum> {
+    let sym = Symbol::intern(name);
+    tcx.crates(())
+        .iter()
+        .cloned()
+        .find(|&cnum| tcx.crate_name(cnum) == sym)
+}
 
 pub fn get_fn_name(tcx: TyCtxt<'_>, def_id: DefId) -> Option<String> {
     let name = tcx.def_path(def_id).to_string_no_crate_verbose();
