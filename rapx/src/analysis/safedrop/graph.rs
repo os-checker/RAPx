@@ -1,7 +1,7 @@
 use super::bug_records::*;
 use crate::{
     analysis::{core::alias_analysis::default::types::*, core::ownedheap_analysis::OHAResultMap},
-    init::*,
+    def_id::*,
 };
 use rustc_data_structures::fx::{FxHashMap, FxHashSet};
 use rustc_middle::mir::{
@@ -393,11 +393,11 @@ impl<'tcx> SafeDropGraph<'tcx> {
                     fn_span: _,
                 } => {
                     if let Operand::Constant(c) = func {
-                        if let ty::FnDef(id, ..) = c.ty().kind() {
-                            if Some(&id.index.as_usize()) == DROP.get()
-                                || Some(&id.index.as_usize()) == DROP_IN_PLACE.get()
-                                || Some(&id.index.as_usize()) == MANUALLYDROP.get()
-                                || Some(&id.index.as_usize()) == DEALLOC.get()
+                        if let &ty::FnDef(id, ..) = c.ty().kind() {
+                            if id == drop()
+                                || id == drop_in_place()
+                                || id == manually_drop()
+                                || id == dealloc()
                             {
                                 cur_bb.drops.push(terminator.clone());
                             }

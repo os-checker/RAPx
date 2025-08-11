@@ -1,8 +1,8 @@
 #![feature(rustc_private)]
 #![feature(box_patterns)]
-#[macro_use]
-pub mod init;
+
 pub mod analysis;
+pub mod def_id;
 pub mod preprocess;
 pub mod utils;
 extern crate intervals;
@@ -20,7 +20,6 @@ extern crate rustc_middle;
 extern crate rustc_session;
 extern crate rustc_span;
 extern crate rustc_target;
-//extern crate stable_mir;
 extern crate thin_vec;
 use analysis::{
     core::{
@@ -328,7 +327,7 @@ impl RapCallback {
 
 /// Start the analysis with the features enabled.
 pub fn start_analyzer(tcx: TyCtxt, callback: RapCallback) {
-    init::set_intrinsic_fn(tcx);
+    def_id::init(tcx);
     if callback.is_alias_enabled() {
         let mut analyzer = AliasAnalyzer::new(tcx);
         analyzer.run();

@@ -1,7 +1,7 @@
 use super::{graph::*, types::*};
 use crate::{
     analysis::core::alias_analysis::default::{MopAAFact, MopAAResultMap},
-    init::*,
+    def_id::*,
     rap_debug,
 };
 use rustc_hir::def_id::DefId;
@@ -85,13 +85,13 @@ impl<'tcx> MopGraph<'tcx> {
                         }
                     }
                 }
-                if let ty::FnDef(ref target_id, _) = constant.const_.ty().kind() {
+                if let &ty::FnDef(target_id, _) = constant.const_.ty().kind() {
                     //if may_drop_flag > 1 || Self::should_check(target_id.clone()) == false {
                     if may_drop_flag > 0 {
-                        if self.tcx.is_mir_available(*target_id) {
+                        if self.tcx.is_mir_available(target_id) {
                             rap_debug!("target_id {:?}", target_id);
-                            if fn_map.contains_key(target_id) {
-                                let assignments = fn_map.get(target_id).unwrap();
+                            if fn_map.contains_key(&target_id) {
+                                let assignments = fn_map.get(&target_id).unwrap();
                                 for assign in assignments.aliases().iter() {
                                     if !assign.valuable() {
                                         continue;
@@ -100,11 +100,11 @@ impl<'tcx> MopGraph<'tcx> {
                                 }
                             } else {
                                 /* Fixed-point iteration: this is not perfect */
-                                if recursion_set.contains(target_id) {
+                                if recursion_set.contains(&target_id) {
                                     continue;
                                 }
-                                recursion_set.insert(*target_id);
-                                let mut mop_graph = MopGraph::new(self.tcx, *target_id);
+                                recursion_set.insert(target_id);
+                                let mut mop_graph = MopGraph::new(self.tcx, target_id);
                                 mop_graph.solve_scc();
                                 mop_graph.check(0, fn_map, recursion_set);
                                 let ret_alias = mop_graph.ret_alias.clone();
@@ -114,11 +114,11 @@ impl<'tcx> MopGraph<'tcx> {
                                     }
                                     self.merge(assign, &merge_vec);
                                 }
-                                fn_map.insert(*target_id, ret_alias);
-                                recursion_set.remove(target_id);
+                                fn_map.insert(target_id, ret_alias);
+                                recursion_set.remove(&target_id);
                             }
                         } else if self.values[lv].may_drop {
-                            if Some(&target_id.index.as_usize()) == CALL_MUT.get() {
+                            if target_id == call_mut() {
                                 continue;
                             }
 
