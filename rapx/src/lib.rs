@@ -1,10 +1,12 @@
 #![feature(rustc_private)]
 #![feature(box_patterns)]
 
+#[macro_use]
+pub mod utils;
+
 pub mod analysis;
 pub mod def_id;
 pub mod preprocess;
-pub mod utils;
 extern crate intervals;
 extern crate rustc_abi;
 extern crate rustc_ast;
