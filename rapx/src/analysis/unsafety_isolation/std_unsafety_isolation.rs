@@ -51,45 +51,42 @@ impl<'tcx> UnsafetyIsolationCheck<'tcx> {
         let mut total_cnt = 0;
         let mut api_cnt = 0;
         let mut sp_cnt = 0;
-        let def_id_sets = tcx.mir_keys(());
+        let v_fn_def: Vec<_> = rustc_public::find_crates("core")
+            .iter()
+            .flat_map(|krate| krate.fn_defs())
+            .collect();
         let mut sp_count_map: HashMap<String, usize> = HashMap::new();
 
-        for local_def_id in def_id_sets {
-            let def_id = local_def_id.to_def_id();
-            if Self::filter_mir(def_id) {
-                continue;
-            }
-            if tcx.def_kind(def_id) == DefKind::Fn || tcx.def_kind(def_id) == DefKind::AssocFn {
-                if check_safety(tcx, def_id)
-                    && !get_cleaned_def_path_name(self.tcx, def_id).contains("intrinsic")
-                {
-                    let sp_set = get_sp(tcx, def_id);
-                    if !sp_set.is_empty() {
-                        unsafe_fn.insert(def_id);
-                        let mut flag = false;
-                        for sp in &sp_set {
-                            if sp.is_empty()
-                                || sp == "Function_sp"
-                                || sp == "System_sp"
-                                || sp == "ValidSlice"
-                            {
-                                flag = true;
-                            }
+        for fn_def in &v_fn_def {
+            let sig = fn_def.fn_sig();
+            let def_id = crate::def_id::to_internal(fn_def, tcx);
+            if sig.value.safety == rustc_public::mir::Safety::Unsafe && !fn_def.is_intrinsic() {
+                let sp_set = get_sp(tcx, def_id);
+                if !sp_set.is_empty() {
+                    unsafe_fn.insert(def_id);
+                    let mut flag = false;
+                    for sp in &sp_set {
+                        if sp.is_empty()
+                            || sp == "Function_sp"
+                            || sp == "System_sp"
+                            || sp == "ValidSlice"
+                        {
+                            flag = true;
                         }
-                        if !flag {
-                            api_cnt += 1;
-                            sp_cnt += sp_set.len();
-                        }
-                        total_cnt += 1;
-                        // println!("unsafe fn : {:?}", get_cleaned_def_path_name(self.tcx, def_id));
                     }
-                    for sp in sp_set {
-                        *sp_count_map.entry(sp).or_insert(0) += 1;
+                    if !flag {
+                        api_cnt += 1;
+                        sp_cnt += sp_set.len();
                     }
-                    // self.check_params(def_id);
+                    total_cnt += 1;
+                    // println!("unsafe fn : {:?}", get_cleaned_def_path_name(self.tcx, def_id));
                 }
-                self.insert_uig(def_id, get_callees(tcx, def_id), get_cons(tcx, def_id));
+                for sp in sp_set {
+                    *sp_count_map.entry(sp).or_insert(0) += 1;
+                }
+                // self.check_params(def_id);
             }
+            self.insert_uig(def_id, get_callees(tcx, def_id), get_cons(tcx, def_id));
         }
         // self.analyze_struct();
         // self.analyze_uig();
@@ -97,9 +94,13 @@ impl<'tcx> UnsafetyIsolationCheck<'tcx> {
         // for (sp, count) in &sp_count_map {
         //     println!("SP: {}, Count: {}", sp, count);
         // }
-        println!(
-            "count : {:?} and {:?}, sp cnt : {}",
-            total_cnt, api_cnt, sp_cnt
+
+        rap_info!(
+            "fn_def : {}, count : {:?} and {:?}, sp cnt : {}",
+            v_fn_def.len(),
+            total_cnt,
+            api_cnt,
+            sp_cnt
         );
         // println!("unsafe fn len {}", unsafe_fn.len());
         unsafe_fn

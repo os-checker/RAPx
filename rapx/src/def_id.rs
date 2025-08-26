@@ -77,3 +77,8 @@ intrinsics! {
     drop_in_place: "std::ptr::drop_in_place",
     manually_drop: "std::mem::ManuallyDrop::<T>::drop",
 }
+
+/// rustc_public DefId to internal DefId
+pub fn to_internal<T: CrateDef>(val: &T, tcx: TyCtxt) -> DefId {
+    rustc_internal::internal(tcx, val.def_id())
+}
