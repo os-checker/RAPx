@@ -4,6 +4,9 @@
 # #![deny(missing_docs)] must be successfully compiled.
 # cc https://github.com/Artisan-Lab/RAPx/issues/184
 pushd support/deny_missing_docs && cargo rapx -- && popd
+# defid of intrinsics for #![no_std] crates
+# cc https://github.com/Artisan-Lab/RAPx/issues/190
+pushd support/no_std && cargo rapx -alias && popd
 
 # All arguments passed to this script are forwarded to cargo rapx
 # Example: batch.sh -F -M

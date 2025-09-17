@@ -56,17 +56,21 @@ fn init_inner(tcx: TyCtxt) -> Intrinsics {
 
     map.sort_unstable_by(|a, _, b, _| a.cmp(b));
 
-    let not_found = indices
-        .iter()
-        .filter_map(|(&idx, &found)| (!found).then_some(INTRINSICS[idx]))
-        .collect::<Vec<_>>();
-    assert_eq!(
-        INTRINSICS.len(),
-        map.len(),
-        "Intrinsic functions is incompletely retrieved.\n\
-         {} fn ids are not found: {not_found:#?}",
-        not_found.len()
-    );
+    if INTRINSICS.len() != map.len() {
+        // The reason to not make this an assertion is allowing compilation on
+        // missing instrinsics, e.g. no_std crates without using alloc will never
+        // have the dealloc intrinsic.
+        // cc https://github.com/Artisan-Lab/RAPx/issues/190#issuecomment-3303049000
+        let not_found = indices
+            .iter()
+            .filter_map(|(&idx, &found)| (!found).then_some(INTRINSICS[idx]))
+            .collect::<Vec<_>>();
+        rap_warn!(
+            "Intrinsic functions is incompletely retrieved.\n\
+             {} fn ids are not found: {not_found:#?}",
+            not_found.len()
+        );
+    }
 
     Intrinsics { map }
 }
@@ -76,14 +80,20 @@ macro_rules! intrinsics {
         const INTRINSICS: &[&[&str]] = &[$( $paths ,)+];
         $(
             pub fn $id() -> DefId {
+                ${concat($id, _opt)} ().unwrap_or_else(||
+                    panic!("Failed to retrieve the DefId of {:#?}.", $paths)
+                )
+            }
+
+            pub fn ${concat($id, _opt)} () -> Option<DefId> {
                 let map = &INIT.get().expect("Intrinsics DefIds haven't been initialized.").map;
                 for path in $paths {
                     match map.get(*path) {
-                        Some(id) => return *id,
+                        Some(id) => return Some(*id),
                         None => ()
                     }
                 }
-                panic!("Failed to retrieve the DefId of {:#?}.", $paths);
+                None
             }
         )+
     };

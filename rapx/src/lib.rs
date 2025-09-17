@@ -1,5 +1,6 @@
 #![feature(rustc_private)]
 #![feature(box_patterns)]
+#![feature(macro_metavar_expr_concat)]
 
 #[macro_use]
 pub mod utils;
