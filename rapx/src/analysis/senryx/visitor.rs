@@ -1,9 +1,10 @@
 use crate::{
     analysis::{
+        Analysis,
         core::{
             alias_analysis::AAResult,
             ownedheap_analysis::OHAResultMap,
-            range_analysis::{default::RangeAnalyzer, RangeAnalysis},
+            range_analysis::{RangeAnalysis, default::RangeAnalyzer},
         },
         safedrop::graph::SafeDropGraph,
         senryx::contracts::property::{CisRangeItem, PropertyContract},
@@ -14,7 +15,6 @@ use crate::{
             },
             show_mir::display_mir,
         },
-        Analysis,
     },
     rap_debug, rap_warn,
 };
@@ -46,7 +46,7 @@ use rustc_middle::{
     },
     ty::{self, GenericArgKind, PseudoCanonicalInput, Ty, TyCtxt, TyKind},
 };
-use rustc_span::{source_map::Spanned, Span};
+use rustc_span::{Span, source_map::Spanned};
 
 //TODO: modify contracts vec to contract-bool pairs (we can also use path index to record path info)
 pub struct CheckResult {
@@ -268,8 +268,7 @@ impl<'tcx> BodyVisitor<'tcx> {
                 fn_span,
             } => {
                 if let Operand::Constant(func_constant) = func {
-                    if let ty::FnDef(ref callee_def_id, raw_list) = func_constant.const_.ty().kind()
-                    {
+                    if let ty::FnDef(callee_def_id, raw_list) = func_constant.const_.ty().kind() {
                         let mut mapping = FxHashMap::default();
                         self.get_generic_mapping(raw_list.as_slice(), callee_def_id, &mut mapping);
                         rap_debug!(
@@ -382,14 +381,14 @@ impl<'tcx> BodyVisitor<'tcx> {
                 }
                 _ => {}
             },
-            Rvalue::BinaryOp(_bin_op, box (ref _op1, ref _op2)) => {}
+            Rvalue::BinaryOp(_bin_op, box (_op1, _op2)) => {}
             Rvalue::ShallowInitBox(op, _ty) => match op {
                 Operand::Move(rplace) | Operand::Copy(rplace) => {
                     let _rpjc_local = self.handle_proj(true, rplace.clone());
                 }
                 _ => {}
             },
-            Rvalue::Aggregate(box ref agg_kind, op_vec) => match agg_kind {
+            Rvalue::Aggregate(box agg_kind, op_vec) => match agg_kind {
                 AggregateKind::Array(_ty) => {}
                 AggregateKind::Adt(_adt_def_id, _, _, _, _) => {
                     for (idx, op) in op_vec.into_iter().enumerate() {

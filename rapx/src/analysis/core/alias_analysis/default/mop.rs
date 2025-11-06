@@ -384,10 +384,7 @@ impl<'tcx> MopGraph<'tcx> {
         let term = &self.terms[idx].clone();
 
         match term {
-            TerminatorKind::SwitchInt {
-                ref discr,
-                ref targets,
-            } => match discr {
+            TerminatorKind::SwitchInt { discr, targets } => match discr {
                 Copy(p) | Move(p) => {
                     let place = self.projection(false, *p);
                     if let Some(father) = self.disc_map.get(&self.values[place].local) {

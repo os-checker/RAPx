@@ -1,5 +1,5 @@
 use crate::{
-    analysis::core::alias_analysis::default::{types::*, MopAAResult},
+    analysis::core::alias_analysis::default::{MopAAResult, types::*},
     rap_debug,
     utils::source::*,
 };
@@ -11,7 +11,7 @@ use rustc_middle::{
     },
     ty::{TyCtxt, TypingEnv},
 };
-use rustc_span::{def_id::DefId, Span};
+use rustc_span::{Span, def_id::DefId};
 use std::{cell::RefCell, cmp::min, vec::Vec};
 
 #[derive(PartialEq, Debug, Copy, Clone)]
@@ -212,7 +212,7 @@ impl<'tcx> MopGraph<'tcx> {
                         // assign.1 is a Rvalue
                         Rvalue::Use(ref x) => {
                             match x {
-                                Operand::Copy(ref p) => {
+                                Operand::Copy(p) => {
                                     let rv_local = p.local.as_usize();
                                     if values[lv_local].may_drop && values[rv_local].may_drop {
                                         let rv = *p;
@@ -221,7 +221,7 @@ impl<'tcx> MopGraph<'tcx> {
                                         cur_bb.assignments.push(assign);
                                     }
                                 }
-                                Operand::Move(ref p) => {
+                                Operand::Move(p) => {
                                     let rv_local = p.local.as_usize();
                                     if values[lv_local].may_drop && values[rv_local].may_drop {
                                         let rv = *p;
@@ -230,7 +230,7 @@ impl<'tcx> MopGraph<'tcx> {
                                         cur_bb.assignments.push(assign);
                                     }
                                 }
-                                Operand::Constant(ref constant) => {
+                                Operand::Constant(constant) => {
                                     /* We should check the correctness due to the update of rustc
                                      * https://doc.rust-lang.org/beta/nightly-rustc/rustc_middle/mir/enum.Const.html
                                      */
@@ -277,7 +277,7 @@ impl<'tcx> MopGraph<'tcx> {
                                 values.push(lvl0);
                             }
                             match x {
-                                Operand::Copy(ref p) | Operand::Move(ref p) => {
+                                Operand::Copy(p) | Operand::Move(p) => {
                                     let rv_local = p.local.as_usize();
                                     if values[lv_local].may_drop && values[rv_local].may_drop {
                                         let rv = *p;
@@ -290,7 +290,7 @@ impl<'tcx> MopGraph<'tcx> {
                             }
                         }
                         Rvalue::Cast(_, ref x, _) => match x {
-                            Operand::Copy(ref p) => {
+                            Operand::Copy(p) => {
                                 let rv_local = p.local.as_usize();
                                 if values[lv_local].may_drop && values[rv_local].may_drop {
                                     let rv = *p;
@@ -298,7 +298,7 @@ impl<'tcx> MopGraph<'tcx> {
                                     cur_bb.assignments.push(assign);
                                 }
                             }
-                            Operand::Move(ref p) => {
+                            Operand::Move(p) => {
                                 let rv_local = p.local.as_usize();
                                 if values[lv_local].may_drop && values[rv_local].may_drop {
                                     let rv = *p;
@@ -311,7 +311,7 @@ impl<'tcx> MopGraph<'tcx> {
                         Rvalue::Aggregate(_, ref x) => {
                             for each_x in x {
                                 match each_x {
-                                    Operand::Copy(ref p) | Operand::Move(ref p) => {
+                                    Operand::Copy(p) | Operand::Move(p) => {
                                         let rv_local = p.local.as_usize();
                                         if values[lv_local].may_drop && values[rv_local].may_drop {
                                             let rv = *p;
@@ -648,21 +648,18 @@ impl<'tcx> MopGraph<'tcx> {
             return None;
         }
 
-        let res = if let TerminatorKind::SwitchInt {
-            ref discr,
-            targets: _,
-        } = &block.switch_stmts[0].kind
-        {
-            match discr {
-                Operand::Copy(p) | Operand::Move(p) => {
-                    let place = self.projection(false, p.clone());
-                    Some(place)
+        let res =
+            if let TerminatorKind::SwitchInt { discr, targets: _ } = &block.switch_stmts[0].kind {
+                match discr {
+                    Operand::Copy(p) | Operand::Move(p) => {
+                        let place = self.projection(false, p.clone());
+                        Some(place)
+                    }
+                    _ => None,
                 }
-                _ => None,
-            }
-        } else {
-            None
-        };
+            } else {
+                None
+            };
 
         res
     }

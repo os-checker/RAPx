@@ -1,19 +1,19 @@
-use crate::analysis::core::dataflow::default::DataFlowAnalyzer;
 use crate::analysis::core::dataflow::DataFlowAnalysis;
+use crate::analysis::core::dataflow::default::DataFlowAnalyzer;
 use crate::analysis::senryx::contracts::property;
 #[allow(unused)]
 use crate::analysis::senryx::contracts::property::PropertyContract;
 use crate::analysis::senryx::matcher::parse_unsafe_api;
+use crate::analysis::unsafety_isolation::UnsafetyIsolationCheck;
 use crate::analysis::unsafety_isolation::draw_dot::render_dot_graphs;
 use crate::analysis::unsafety_isolation::generate_dot::NodeType;
-use crate::analysis::unsafety_isolation::UnsafetyIsolationCheck;
 use crate::rap_debug;
 use crate::rap_warn;
 use rustc_data_structures::fx::FxHashMap;
-use rustc_hir::def::DefKind;
-use rustc_hir::def_id::DefId;
 use rustc_hir::Attribute;
 use rustc_hir::ImplItemKind;
+use rustc_hir::def::DefKind;
+use rustc_hir::def_id::DefId;
 use rustc_middle::mir::BinOp;
 use rustc_middle::mir::Local;
 use rustc_middle::mir::{BasicBlock, Terminator};
@@ -278,7 +278,7 @@ pub fn get_callees(tcx: TyCtxt<'_>, def_id: DefId) -> HashSet<DefId> {
         for bb in body.basic_blocks.iter() {
             if let TerminatorKind::Call { func, .. } = &bb.terminator().kind {
                 if let Operand::Constant(func_constant) = func {
-                    if let ty::FnDef(ref callee_def_id, _) = func_constant.const_.ty().kind() {
+                    if let ty::FnDef(callee_def_id, _) = func_constant.const_.ty().kind() {
                         if check_safety(tcx, *callee_def_id) {
                             callees.insert(*callee_def_id);
                         }
@@ -297,7 +297,7 @@ pub fn get_all_callees(tcx: TyCtxt<'_>, def_id: DefId) -> HashSet<DefId> {
         for bb in body.basic_blocks.iter() {
             if let TerminatorKind::Call { func, .. } = &bb.terminator().kind {
                 if let Operand::Constant(func_constant) = func {
-                    if let ty::FnDef(ref callee_def_id, _) = func_constant.const_.ty().kind() {
+                    if let ty::FnDef(callee_def_id, _) = func_constant.const_.ty().kind() {
                         callees.insert(*callee_def_id);
                     }
                 }
@@ -493,7 +493,7 @@ pub fn match_std_unsafe_chains_callee(tcx: TyCtxt<'_>, terminator: &Terminator<'
     let mut results = Vec::new();
     if let TerminatorKind::Call { func, .. } = &terminator.kind {
         if let Operand::Constant(func_constant) = func {
-            if let ty::FnDef(ref callee_def_id, _raw_list) = func_constant.const_.ty().kind() {
+            if let ty::FnDef(callee_def_id, _raw_list) = func_constant.const_.ty().kind() {
                 let func_name = get_cleaned_def_path_name(tcx, *callee_def_id);
             }
         }
@@ -540,7 +540,7 @@ pub fn match_std_unsafe_callee(tcx: TyCtxt<'_>, terminator: &Terminator<'_>) -> 
     let mut results = Vec::new();
     if let TerminatorKind::Call { func, .. } = &terminator.kind {
         if let Operand::Constant(func_constant) = func {
-            if let ty::FnDef(ref callee_def_id, _raw_list) = func_constant.const_.ty().kind() {
+            if let ty::FnDef(callee_def_id, _raw_list) = func_constant.const_.ty().kind() {
                 let func_name = get_cleaned_def_path_name(tcx, *callee_def_id);
                 if parse_unsafe_api(&func_name).is_some() {
                     results.push(func_name);

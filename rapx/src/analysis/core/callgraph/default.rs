@@ -8,8 +8,9 @@ use std::{collections::HashMap, hash::Hash};
 
 use super::visitor::CallGraphVisitor;
 use crate::{
+    Analysis,
     analysis::core::callgraph::{CallGraph, CallGraphAnalysis},
-    rap_debug, rap_info, Analysis,
+    rap_debug, rap_info,
 };
 
 pub struct CallGraphAnalyzer<'tcx> {

@@ -30,16 +30,17 @@ extern crate rustc_type_ir;
 extern crate thin_vec;
 use crate::analysis::scan::ScanAnalysis;
 use analysis::{
+    Analysis,
     core::{
-        alias_analysis::{default::AliasAnalyzer, AAResultMapWrapper, AliasAnalysis},
+        alias_analysis::{AAResultMapWrapper, AliasAnalysis, default::AliasAnalyzer},
         api_dependency::ApiDependencyAnalyzer,
-        callgraph::{default::CallGraphAnalyzer, CallGraphAnalysis, CallGraphDisplay},
+        callgraph::{CallGraphAnalysis, CallGraphDisplay, default::CallGraphAnalyzer},
         dataflow::{
-            default::DataFlowAnalyzer, Arg2RetMapWrapper, DataFlowAnalysis, DataFlowGraphMapWrapper,
+            Arg2RetMapWrapper, DataFlowAnalysis, DataFlowGraphMapWrapper, default::DataFlowAnalyzer,
         },
-        ownedheap_analysis::{default::OwnedHeapAnalyzer, OHAResultMapWrapper, OwnedHeapAnalysis},
+        ownedheap_analysis::{OHAResultMapWrapper, OwnedHeapAnalysis, default::OwnedHeapAnalyzer},
         range_analysis::{
-            default::RangeAnalyzer, PathConstraintMapWrapper, RAResultMapWrapper, RangeAnalysis,
+            PathConstraintMapWrapper, RAResultMapWrapper, RangeAnalysis, default::RangeAnalyzer,
         },
         ssa_transform::SSATrans,
     },
@@ -50,13 +51,12 @@ use analysis::{
     test::Test,
     unsafety_isolation::{UigInstruction, UnsafetyIsolationCheck},
     utils::show_mir::ShowMir,
-    Analysis,
 };
 use rustc_ast::ast;
 use rustc_driver::{Callbacks, Compilation};
 use rustc_interface::{
-    interface::{self, Compiler},
     Config,
+    interface::{self, Compiler},
 };
 use rustc_middle::{ty::TyCtxt, util::Providers};
 use rustc_session::search_paths::PathKind;
@@ -189,18 +189,18 @@ impl RapCallback {
     pub fn enable_alias(&mut self, arg: String) {
         self.alias = true;
         match arg.as_str() {
-            "-alias" => {
+            "-alias" => unsafe {
                 env::set_var("ALIAS", "1");
-            }
-            "-alias0" => {
+            },
+            "-alias0" => unsafe {
                 env::set_var("ALIAS", "0");
-            }
-            "-alias1" => {
+            },
+            "-alias1" => unsafe {
                 env::set_var("ALIAS", "1");
-            }
-            "-alias2" => {
+            },
+            "-alias2" => unsafe {
                 env::set_var("ALIAS", "2");
-            }
+            },
             _ => {}
         }
     }
@@ -307,24 +307,44 @@ impl RapCallback {
         self.safedrop = true;
         match arg.as_str() {
             "-F" => {
-                env::set_var("SAFEDROP", "1");
-                env::set_var("MOP", "1");
+                unsafe {
+                    env::set_var("SAFEDROP", "1");
+                }
+                unsafe {
+                    env::set_var("MOP", "1");
+                }
             }
             "-F0" => {
-                env::set_var("SAFEDROP", "0");
-                env::set_var("MOP", "0");
+                unsafe {
+                    env::set_var("SAFEDROP", "0");
+                }
+                unsafe {
+                    env::set_var("MOP", "0");
+                }
             }
             "-F1" => {
-                env::set_var("SAFEDROP", "1");
-                env::set_var("MOP", "1");
+                unsafe {
+                    env::set_var("SAFEDROP", "1");
+                }
+                unsafe {
+                    env::set_var("MOP", "1");
+                }
             }
             "-F2" => {
-                env::set_var("SAFEDROP", "2");
-                env::set_var("MOP", "2");
+                unsafe {
+                    env::set_var("SAFEDROP", "2");
+                }
+                unsafe {
+                    env::set_var("MOP", "2");
+                }
             }
             "-uaf" => {
-                env::set_var("SAFEDROP", "1");
-                env::set_var("MOP", "1");
+                unsafe {
+                    env::set_var("SAFEDROP", "1");
+                }
+                unsafe {
+                    env::set_var("MOP", "1");
+                }
             }
             _ => {}
         }

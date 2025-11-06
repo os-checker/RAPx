@@ -1,6 +1,6 @@
 use super::{
-    generate_dot::{NodeType, UigUnit},
     UnsafetyIsolationCheck,
+    generate_dot::{NodeType, UigUnit},
 };
 use crate::analysis::utils::fn_info::*;
 use crate::analysis::{

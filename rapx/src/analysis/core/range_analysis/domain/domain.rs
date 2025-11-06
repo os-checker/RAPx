@@ -283,13 +283,46 @@ pub enum BasicOpKind<'tcx, T: IntervalArithmetic + ConstConvert + Debug> {
 impl<'tcx, T: IntervalArithmetic + ConstConvert + Debug> fmt::Display for BasicOpKind<'tcx, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            BasicOpKind::Unary(op) => write!(f, "UnaryOp: intersect {} sink:{:?} source:{:?} inst:{:?} ",op.intersect,op.sink,op.source,op.inst),
-            BasicOpKind::Binary(op) => write!(f, "BinaryOp: intersect {} sink:{:?} source1:{:?} source2:{:?} inst:{:?} const_value:{} ",op.intersect,op.sink,op.source1,op.source2,op.inst,op.const_value.clone().unwrap()),
-            BasicOpKind::Essa(op) => write!(f, "EssaOp: intersect {} sink:{:?} source:{:?} inst:{:?} unresolved:{:?} ",op.intersect,op.sink,op.source,op.inst,op.unresolved),
-            BasicOpKind::ControlDep(op) => write!(f, "ControlDep: intersect {} sink:{:?} source:{:?} inst:{:?}  ",op.intersect,op.sink,op.source,op.inst),
-            BasicOpKind::Phi(op) => write!(f, "PhiOp: intersect {} sink:{:?} source:{:?} inst:{:?}  ",op.intersect,op.sink,op.sources,op.inst),
-            BasicOpKind::Use(op) => write!(f, "UseOp: intersect {} sink:{:?} source:{:?} inst:{:?} ",op.intersect,op.sink,op.source,op.inst ),
-            BasicOpKind::Call(op) => write!(f, "CallOp: intersect {} sink:{:?} args:{:?} inst:{:?}", op.intersect, op.sink, op.args, op.inst),
+            BasicOpKind::Unary(op) => write!(
+                f,
+                "UnaryOp: intersect {} sink:{:?} source:{:?} inst:{:?} ",
+                op.intersect, op.sink, op.source, op.inst
+            ),
+            BasicOpKind::Binary(op) => write!(
+                f,
+                "BinaryOp: intersect {} sink:{:?} source1:{:?} source2:{:?} inst:{:?} const_value:{} ",
+                op.intersect,
+                op.sink,
+                op.source1,
+                op.source2,
+                op.inst,
+                op.const_value.clone().unwrap()
+            ),
+            BasicOpKind::Essa(op) => write!(
+                f,
+                "EssaOp: intersect {} sink:{:?} source:{:?} inst:{:?} unresolved:{:?} ",
+                op.intersect, op.sink, op.source, op.inst, op.unresolved
+            ),
+            BasicOpKind::ControlDep(op) => write!(
+                f,
+                "ControlDep: intersect {} sink:{:?} source:{:?} inst:{:?}  ",
+                op.intersect, op.sink, op.source, op.inst
+            ),
+            BasicOpKind::Phi(op) => write!(
+                f,
+                "PhiOp: intersect {} sink:{:?} source:{:?} inst:{:?}  ",
+                op.intersect, op.sink, op.sources, op.inst
+            ),
+            BasicOpKind::Use(op) => write!(
+                f,
+                "UseOp: intersect {} sink:{:?} source:{:?} inst:{:?} ",
+                op.intersect, op.sink, op.source, op.inst
+            ),
+            BasicOpKind::Call(op) => write!(
+                f,
+                "CallOp: intersect {} sink:{:?} args:{:?} inst:{:?}",
+                op.intersect, op.sink, op.args, op.inst
+            ),
         }
     }
 }
@@ -459,13 +492,13 @@ impl<'tcx, T: IntervalArithmetic + ConstConvert + Debug> CallOp<'tcx, T> {
                                     let arg_range = caller_arg_node.get_range().clone();
                                     callee_arg_node.set_range(arg_range);
                                     rap_debug!(
-                                                    "Passing argument from {:?} to callee {:?} : {:?} {:?} -> {:?}",
-                                                    caller_arg_place,
-                                                    self.def_id,
-                                                    callee_arg_node.get_value(),
-                                                    caller_arg_node.get_range(),
-                                                    callee_arg_node.get_range()
-                                                );
+                                        "Passing argument from {:?} to callee {:?} : {:?} {:?} -> {:?}",
+                                        caller_arg_place,
+                                        self.def_id,
+                                        callee_arg_node.get_value(),
+                                        caller_arg_node.get_range(),
+                                        callee_arg_node.get_range()
+                                    );
                                 }
                             }
                         }
@@ -491,13 +524,13 @@ impl<'tcx, T: IntervalArithmetic + ConstConvert + Debug> CallOp<'tcx, T> {
                                     );
                                     callee_arg_node.set_range(arg_range.clone());
                                     rap_debug!(
-                                                    "Passing argument from {:?} to callee {:?} : {:?} {:?} -> {:?}",
-                                                    const_value,
-                                                    self.def_id,
-                                                    callee_arg_node.get_value(),
-                                                    arg_range,
-                                                    callee_arg_node.get_range()
-                                                );
+                                        "Passing argument from {:?} to callee {:?} : {:?} {:?} -> {:?}",
+                                        const_value,
+                                        self.def_id,
+                                        callee_arg_node.get_value(),
+                                        arg_range,
+                                        callee_arg_node.get_range()
+                                    );
                                 }
                             }
                             // Find the corresponding Place and VarNode in the callee.

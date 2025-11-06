@@ -1,6 +1,6 @@
 use super::graph::*;
 use crate::{
-    analysis::core::alias_analysis::default::{types::*, MopAAFact, MopAAResultMap},
+    analysis::core::alias_analysis::default::{MopAAFact, MopAAResultMap, types::*},
     rap_error,
 };
 use rustc_middle::{
@@ -55,7 +55,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
                 fn_span: _,
             } = call.kind
             {
-                if let Operand::Constant(ref constant) = func {
+                if let Operand::Constant(constant) = func {
                     let lv = self.projection(tcx, false, destination.clone());
                     self.values[lv].birth = self.scc_indices[bb_index] as isize;
                     let mut merge_vec = Vec::new();
@@ -87,7 +87,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
                             }
                         }
                     }
-                    if let ty::FnDef(ref target_id, _) = constant.const_.ty().kind() {
+                    if let ty::FnDef(target_id, _) = constant.const_.ty().kind() {
                         if may_drop_flag > 1 {
                             if tcx.is_mir_available(*target_id) {
                                 if fn_map.contains_key(&target_id) {

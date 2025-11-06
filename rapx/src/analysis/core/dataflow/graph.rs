@@ -10,7 +10,7 @@ use rustc_middle::{
     },
     ty::TyKind,
 };
-use rustc_span::{Span, DUMMY_SP};
+use rustc_span::{DUMMY_SP, Span};
 
 use crate::{analysis::core::dataflow::*, utils::log::relative_pos_range};
 

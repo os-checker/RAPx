@@ -11,7 +11,7 @@ use rustc_middle::ty::TyCtxt;
 
 use crate::analysis::core::{
     alias_analysis::default::{AliasAnalyzer, MopAAResultMap},
-    ownedheap_analysis::{default::OwnedHeapAnalyzer, OHAResultMap, OwnedHeapAnalysis},
+    ownedheap_analysis::{OHAResultMap, OwnedHeapAnalysis, default::OwnedHeapAnalyzer},
 };
 use graph::SafeDropGraph;
 use safedrop::*;

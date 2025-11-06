@@ -21,7 +21,7 @@ use rustc_hir::{def, def_id::DefId};
 use rustc_index::IndexVec;
 use rustc_middle::{
     mir::*,
-    ty::{self, print, ScalarInt, TyCtxt},
+    ty::{self, ScalarInt, TyCtxt, print},
 };
 use rustc_span::source_map::Spanned;
 use rustc_span::sym::var;
@@ -143,7 +143,7 @@ where
 
         for (&_key_place, place_set) in places_map {
             for &place in place_set {
-                let found = self.vars.iter().find(|(&p, _)| *p == place);
+                let found = self.vars.iter().find(|&(&p, _)| *p == place);
 
                 if let Some((&found_place, var_node)) = found {
                     final_vars.insert(found_place, var_node.clone());
@@ -1533,7 +1533,9 @@ where
                 // This case is unlikely for functions that return a value, as `_0`
                 // should have been created during the initial graph build.
                 // We add a trace message for robustness.
-                rap_trace!("Warning: RETURN_PLACE (_0) not found in self.vars. Cannot assign merged return range.");
+                rap_trace!(
+                    "Warning: RETURN_PLACE (_0) not found in self.vars. Cannot assign merged return range."
+                );
             }
         }
     }
@@ -1703,7 +1705,10 @@ where
                 let op_idx = self.defmap.get(place);
                 let op_kind = &self.oprs[*op_idx.unwrap()];
 
-                rap_trace!("Local {:?} not defined by an operation and not considered an argument. Returning Unknown.", place);
+                rap_trace!(
+                    "Local {:?} not defined by an operation and not considered an argument. Returning Unknown.",
+                    place
+                );
                 Some(SymbolicExpr::Unknown(UnknownReason::CyclicDependency))
             }
         } else {
@@ -1724,7 +1729,11 @@ where
                         current_expr = SymbolicExpr::Deref(Box::new(current_expr));
                     }
                     PlaceElem::Field(field_idx, _ty) => {
-                        rap_trace!("Unsupported PlaceElem::Field {:?} at {:?}. Returning Unknown for SymbolicExpr.", field_idx, place);
+                        rap_trace!(
+                            "Unsupported PlaceElem::Field {:?} at {:?}. Returning Unknown for SymbolicExpr.",
+                            field_idx,
+                            place
+                        );
                         in_progress.remove(place);
                         memo.insert(
                             place,
@@ -1753,7 +1762,10 @@ where
                         min_length,
                         from_end,
                     } => {
-                        rap_trace!("Unsupported PlaceElem::ConstantIndex at {:?}. Requires TyCtxt to create Const<'tcx>. Returning Unknown.", place);
+                        rap_trace!(
+                            "Unsupported PlaceElem::ConstantIndex at {:?}. Requires TyCtxt to create Const<'tcx>. Returning Unknown.",
+                            place
+                        );
                         in_progress.remove(place);
                         memo.insert(
                             place,
@@ -1763,7 +1775,10 @@ where
                     }
 
                     _ => {
-                        rap_trace!("Unsupported PlaceElem kind at {:?}. Cannot convert to SymbolicExpr. Returning Unknown.", place);
+                        rap_trace!(
+                            "Unsupported PlaceElem kind at {:?}. Cannot convert to SymbolicExpr. Returning Unknown.",
+                            place
+                        );
                         in_progress.remove(place);
                         memo.insert(
                             place,
@@ -1798,7 +1813,10 @@ where
                         (op1_mir, op2_mir)
                     } else {
                         // This case should ideally not happen if BasicOpKind::Binary is correctly formed from MIR.
-                        rap_trace!("Error: BinaryOp's instruction {:?} is not a BinaryOp statement. Returning Unknown.", bop.inst);
+                        rap_trace!(
+                            "Error: BinaryOp's instruction {:?} is not a BinaryOp statement. Returning Unknown.",
+                            bop.inst
+                        );
                         return Some(SymbolicExpr::Unknown(UnknownReason::CannotParse));
                     }
                 };
@@ -1808,7 +1826,10 @@ where
                 } else if let Operand::Constant(c) = original_op1 {
                     SymbolicExpr::Constant(c.const_)
                 } else {
-                    rap_trace!("Error: BinaryOp source1 is None, but original op1 is not a constant for inst {:?}. Returning Unknown.", bop.inst);
+                    rap_trace!(
+                        "Error: BinaryOp source1 is None, but original op1 is not a constant for inst {:?}. Returning Unknown.",
+                        bop.inst
+                    );
                     return Some(SymbolicExpr::Unknown(UnknownReason::CannotParse));
                 };
 
@@ -1817,7 +1838,10 @@ where
                 } else if let Operand::Constant(c) = original_op2 {
                     SymbolicExpr::Constant(c.const_)
                 } else {
-                    rap_trace!("Error: BinaryOp source2 is None, but original op2 is not a constant for inst {:?}. Returning Unknown.", bop.inst);
+                    rap_trace!(
+                        "Error: BinaryOp source2 is None, but original op2 is not a constant for inst {:?}. Returning Unknown.",
+                        bop.inst
+                    );
                     return Some(SymbolicExpr::Unknown(UnknownReason::CannotParse));
                 };
 
@@ -1834,7 +1858,10 @@ where
                     {
                         operand_mir
                     } else {
-                        rap_trace!("Error: UnaryOp's instruction {:?} is not a UnaryOp statement. Returning Unknown.", uop.inst);
+                        rap_trace!(
+                            "Error: UnaryOp's instruction {:?} is not a UnaryOp statement. Returning Unknown.",
+                            uop.inst
+                        );
                         return Some(SymbolicExpr::Unknown(UnknownReason::CannotParse));
                     }
                 };
@@ -1844,7 +1871,10 @@ where
                 } else if let Operand::Copy(place) | Operand::Move(place) = original_operand_mir {
                     self.get_symbolic_expression_recursive(place, memo, in_progress)?
                 } else {
-                    rap_trace!("Error: UnaryOp's operand is neither Place nor Constant for inst {:?}. Returning Unknown.", uop.inst);
+                    rap_trace!(
+                        "Error: UnaryOp's operand is neither Place nor Constant for inst {:?}. Returning Unknown.",
+                        uop.inst
+                    );
                     return Some(SymbolicExpr::Unknown(UnknownReason::CannotParse));
                 };
 
@@ -1859,7 +1889,10 @@ where
                 } else if let Some(source_place) = use_op.source {
                     self.get_symbolic_expression_recursive(source_place, memo, in_progress)
                 } else {
-                    rap_trace!("Error: UseOp has neither source nor const_value for inst {:?}. Returning Unknown.", use_op.inst);
+                    rap_trace!(
+                        "Error: UseOp has neither source nor const_value for inst {:?}. Returning Unknown.",
+                        use_op.inst
+                    );
                     Some(SymbolicExpr::Unknown(UnknownReason::CannotParse))
                 }
             }
@@ -1876,7 +1909,10 @@ where
                     } else {
                         // If any source cannot be resolved (e.g., due to an unhandled MIR construct),
                         // the entire Phi node becomes unresolvable.
-                        rap_trace!("Warning: One source of Phi {:?} cannot be resolved to a symbolic expression. Returning Unknown for the Phi.", phi_op.sink);
+                        rap_trace!(
+                            "Warning: One source of Phi {:?} cannot be resolved to a symbolic expression. Returning Unknown for the Phi.",
+                            phi_op.sink
+                        );
                         return Some(SymbolicExpr::Unknown(UnknownReason::CannotParse));
                     }
                 }
@@ -1901,11 +1937,15 @@ where
                     }
                     super::domain::IntervalType::Basic(basic_interval) => {
                         if let Some(vbm) = self.values_branchmap.get(essa_op.get_source()) {
-                            rap_trace!("Warning: EssaOp with BasicInterval constraint. Cannot directly reconstruct original BinOp and constraint_operand from EssaOp's internal state. Returning Unknown for constraint part.",);
+                            rap_trace!(
+                                "Warning: EssaOp with BasicInterval constraint. Cannot directly reconstruct original BinOp and constraint_operand from EssaOp's internal state. Returning Unknown for constraint part.",
+                            );
                             // Fallback if we cannot precisely reconstruct
                             return Some(SymbolicExpr::Unknown(UnknownReason::CannotParse));
                         } else {
-                            rap_trace!("Warning: EssaOp with BasicInterval constraint, but source not found in values_branchmap. Returning Unknown for constraint part.",);
+                            rap_trace!(
+                                "Warning: EssaOp with BasicInterval constraint, but source not found in values_branchmap. Returning Unknown for constraint part.",
+                            );
                             return Some(SymbolicExpr::Unknown(UnknownReason::CannotParse));
                         }
                     }
@@ -1918,7 +1958,9 @@ where
                 })
             }
             BasicOpKind::ControlDep(_) => {
-                rap_trace!("Encountered unexpected ControlDep operation defining a place. Returning Unknown.");
+                rap_trace!(
+                    "Encountered unexpected ControlDep operation defining a place. Returning Unknown."
+                );
                 Some(SymbolicExpr::Unknown(UnknownReason::CannotParse))
             }
             BasicOpKind::Call(call_op) => todo!(),

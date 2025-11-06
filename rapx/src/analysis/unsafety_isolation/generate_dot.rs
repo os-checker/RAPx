@@ -1,8 +1,8 @@
 use crate::analysis::unsafety_isolation::UnsafetyIsolationCheck;
 use crate::analysis::utils::fn_info::*;
+use petgraph::Graph;
 use petgraph::dot::{Config, Dot};
 use petgraph::graph::{DiGraph, EdgeReference, NodeIndex};
-use petgraph::Graph;
 use rustc_hir::def_id::DefId;
 use rustc_middle::ty::TyCtxt;
 use std::collections::HashSet;

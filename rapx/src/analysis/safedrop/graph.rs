@@ -9,7 +9,7 @@ use rustc_middle::mir::{
     UnwindAction,
 };
 use rustc_middle::ty::{self, TyCtxt, TypingEnv};
-use rustc_span::{def_id::DefId, Span};
+use rustc_span::{Span, def_id::DefId};
 use std::{cell::RefCell, cmp::min, vec::Vec};
 
 #[derive(PartialEq, Debug, Copy, Clone)]

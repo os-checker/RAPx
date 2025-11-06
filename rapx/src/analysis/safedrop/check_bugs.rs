@@ -2,8 +2,8 @@ use super::graph::*;
 use crate::utils::source::*;
 use rustc_data_structures::fx::FxHashSet;
 use rustc_middle::mir::SourceInfo;
-use rustc_span::symbol::Symbol;
 use rustc_span::Span;
+use rustc_span::symbol::Symbol;
 
 impl<'tcx> SafeDropGraph<'tcx> {
     pub fn report_bugs(&self) {

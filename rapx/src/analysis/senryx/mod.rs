@@ -23,14 +23,14 @@ use visitor::{BodyVisitor, CheckResult};
 
 use crate::{
     analysis::{
-        core::alias_analysis::{default::AliasAnalyzer, AAResult, AliasAnalysis},
+        Analysis,
+        core::alias_analysis::{AAResult, AliasAnalysis, default::AliasAnalyzer},
         unsafety_isolation::{
+            UnsafetyIsolationCheck,
             draw_dot::render_dot_graphs,
             hir_visitor::{ContainsUnsafe, RelatedFnCollector},
-            UnsafetyIsolationCheck,
         },
         utils::fn_info::*,
-        Analysis,
     },
     rap_info, rap_warn,
 };

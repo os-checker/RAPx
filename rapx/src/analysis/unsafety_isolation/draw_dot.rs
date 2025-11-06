@@ -1,4 +1,4 @@
-use std::fs::{remove_file, File};
+use std::fs::{File, remove_file};
 use std::io::Write;
 use std::process::Command;
 

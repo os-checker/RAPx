@@ -249,7 +249,7 @@ impl<'tcx> UnsafetyIsolationCheck<'tcx> {
             for bb in body.basic_blocks.iter() {
                 if let TerminatorKind::Call { func, .. } = &bb.terminator().kind {
                     if let Operand::Constant(func_constant) = func {
-                        if let ty::FnDef(ref callee_def_id, _) = func_constant.const_.ty().kind() {
+                        if let ty::FnDef(callee_def_id, _) = func_constant.const_.ty().kind() {
                             if check_safety(self.tcx, *callee_def_id) {
                                 if !callees.contains(callee_def_id) {
                                     callees.push(*callee_def_id);
