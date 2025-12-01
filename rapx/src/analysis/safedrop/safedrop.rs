@@ -1,5 +1,5 @@
-use crate::analysis::{core::alias_analysis::default::MopAAResultMap, safedrop::SafeDropGraph};
-use crate::rap_error;
+use super::graph::*;
+use crate::{analysis::core::alias_analysis::default::MopAAResultMap, rap_error};
 use rustc_data_structures::fx::FxHashSet;
 use rustc_middle::{
     mir::{
@@ -444,6 +444,8 @@ impl<'tcx> SafeDropGraph<'tcx> {
                 }
             }
         }
+        rap_info!("Values: {:?}", self.values);
+        rap_info!("Alias: {:?}", self.alias_set);
     }
 
     pub fn calculate_scc_order(
