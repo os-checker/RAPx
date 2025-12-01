@@ -342,8 +342,8 @@ impl<'tcx> SafeDropGraph<'tcx> {
             blocks.push(cur_bb);
         }
 
-        rap_info!("Values: {:?}", values);
-        rap_info!("Alias: {:?}", alias);
+        rap_debug!("Values: {:?}", values);
+        rap_debug!("Alias: {:?}", alias);
 
         SafeDropGraph {
             def_id,
