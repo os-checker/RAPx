@@ -5,9 +5,8 @@ use crate::analysis::senryx::contracts::property;
 use crate::analysis::senryx::contracts::property::PropertyContract;
 use crate::analysis::senryx::matcher::parse_unsafe_api;
 use crate::analysis::unsafety_isolation::UnsafetyIsolationCheck;
-use crate::analysis::unsafety_isolation::draw_dot::render_dot_graphs;
-use crate::analysis::unsafety_isolation::draw_dot::render_dot_string;
 use crate::analysis::unsafety_isolation::generate_dot::NodeType;
+use crate::analysis::utils::draw_dot::render_dot_string;
 use crate::rap_debug;
 use crate::rap_warn;
 use rustc_data_structures::fx::FxHashMap;
@@ -272,6 +271,33 @@ pub fn get_cons(tcx: TyCtxt<'_>, def_id: DefId) -> Vec<NodeType> {
     cons
 }
 
+// check whether this adt contains a literal constructor
+// result: adt_def_id, is_literal
+pub fn get_adt_access_info(tcx: TyCtxt<'_>, method_def_id: DefId) -> Option<(DefId, bool)> {
+    let assoc_item = tcx.opt_associated_item(method_def_id)?;
+    let impl_id = assoc_item.impl_container(tcx)?;
+    let ty = tcx.type_of(impl_id).skip_binder();
+    let adt_def = ty.ty_adt_def()?;
+    let adt_def_id = adt_def.did();
+
+    let all_fields: Vec<_> = adt_def.all_fields().collect();
+    let total_count = all_fields.len();
+
+    if total_count == 0 {
+        return Some((adt_def_id, true));
+    }
+
+    let pub_count = all_fields
+        .iter()
+        .filter(|field| tcx.visibility(field.did).is_public())
+        .count();
+
+    if pub_count == 0 {
+        return None;
+    }
+    Some((adt_def_id, pub_count == total_count))
+}
+
 pub fn get_callees(tcx: TyCtxt<'_>, def_id: DefId) -> HashSet<DefId> {
     let mut callees = HashSet::new();
     if tcx.is_mir_available(def_id) {
@@ -398,6 +424,9 @@ pub fn has_mut_self_param(tcx: TyCtxt, def_id: DefId) -> bool {
 // Return set of (mutable method def_id, fields can be modified)
 pub fn get_all_mutable_methods(tcx: TyCtxt, src_def_id: DefId) -> HashMap<DefId, HashSet<usize>> {
     let mut std_results = HashMap::new();
+    if get_type(tcx, src_def_id) == 0 {
+        return std_results;
+    }
     let all_std_fn_def = get_all_std_fns_by_rustc_public(tcx);
     let target_adt_def = get_adt_def_id_by_adt_method(tcx, src_def_id);
     let mut uig_entrance = UnsafetyIsolationCheck::new(tcx);
@@ -1138,10 +1167,14 @@ fn try_get_mir(tcx: TyCtxt<'_>, def_id: DefId) -> Option<&rustc_middle::mir::Bod
     }
 }
 
-// 清理def path名称的辅助函数
 pub fn get_cleaned_def_path_name(tcx: TyCtxt<'_>, def_id: DefId) -> String {
-    // 这里实现你的路径清理逻辑
     tcx.def_path_str(def_id)
+        .replace("::", "_")
+        .replace("<", "_")
+        .replace(">", "_")
+        .replace(",", "_")
+        .replace(" ", "")
+        .replace("__", "_")
 }
 
 // 打印调用链的函数
@@ -1224,10 +1257,7 @@ pub fn generate_mir_cfg_dot(tcx: TyCtxt<'_>, def_id: DefId) -> Result<(), std::i
     // Setup Header
     dot_content.push_str(&format!(
         "digraph mir_cfg_{} {{\n",
-        tcx.def_path_str(def_id)
-            .replace("::", "_")
-            .replace("<", "_")
-            .replace(">", "_")
+        get_cleaned_def_path_name(tcx, def_id)
     ));
     dot_content.push_str(&format!(
         "    label = \"MIR CFG for {}\";\n",
@@ -1281,13 +1311,10 @@ pub fn generate_mir_cfg_dot(tcx: TyCtxt<'_>, def_id: DefId) -> Result<(), std::i
             }
         }
     }
-
     dot_content.push_str("}\n");
-
     let name = get_cleaned_def_path_name(tcx, def_id);
     render_dot_string(name, dot_content);
-
-    println!("render dot for {:?}", def_id);
+    rap_debug!("render dot for {:?}", def_id);
     Ok(())
 }
 

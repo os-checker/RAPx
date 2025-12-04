@@ -1,15 +1,12 @@
-pub mod draw_dot;
 pub mod generate_dot;
 pub mod hir_visitor;
-pub mod isolation_graph;
 pub mod render_module_dot;
 pub mod std_unsafety_isolation;
 
-use crate::analysis::unsafety_isolation::draw_dot::render_dot_graphs;
-// use crate::analysis::unsafety_isolation::draw_dot::render_dot_graphs;
 use crate::analysis::unsafety_isolation::generate_dot::UigUnit;
 use crate::analysis::unsafety_isolation::hir_visitor::{ContainsUnsafe, RelatedFnCollector};
-use crate::analysis::unsafety_isolation::isolation_graph::*;
+use crate::analysis::unsafety_isolation::std_unsafety_isolation::IsolationGraphNode;
+use crate::analysis::utils::draw_dot::render_dot_graphs;
 use crate::analysis::utils::fn_info::*;
 use rustc_hir::def_id::DefId;
 use rustc_middle::{
@@ -52,10 +49,10 @@ impl<'tcx> UnsafetyIsolationCheck<'tcx> {
         let related_items = RelatedFnCollector::collect(self.tcx);
         for vec in related_items.values() {
             for (body_id, _span) in vec {
-                let (function_unsafe, _block_unsafe) =
+                let (function_unsafe, block_unsafe) =
                     ContainsUnsafe::contains_unsafe(self.tcx, *body_id);
                 let def_id = self.tcx.hir_body_owner_def_id(*body_id).to_def_id();
-                if function_unsafe {
+                if function_unsafe | block_unsafe {
                     self.insert_uig(
                         def_id,
                         get_callees(self.tcx, def_id),
@@ -64,17 +61,7 @@ impl<'tcx> UnsafetyIsolationCheck<'tcx> {
                 }
             }
         }
-        // self.render_dot();
         self.render_module_dot();
-        // let file_name = format!("re.dot");
-        // let mut file = std::fs::File::create(&file_name).expect("Unable to create file");
-        // file.write_all(dot.as_bytes())
-        //     .expect("Unable to write data");
-
-        // std::process::Command::new("sfdp")
-        //     .args(["-Tsvg", &file_name, "-o", &format!("UPG.png")])
-        //     .output()
-        //     .expect("Failed to execute Graphviz dot command");
     }
 
     pub fn render_dot(&mut self) {
