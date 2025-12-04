@@ -49,7 +49,7 @@ use analysis::{
     safedrop::SafeDrop,
     senryx::{CheckLevel, SenryxCheck},
     test::Test,
-    unsafety_isolation::{UigInstruction, UnsafetyIsolationCheck},
+    upg::{UigInstruction, UnsafetyIsolationCheck},
     utils::show_mir::ShowMir,
 };
 use rustc_ast::ast;
@@ -91,7 +91,7 @@ pub struct RapCallback {
     safedrop: bool,
     show_mir: bool,
     show_mir_dot: bool,
-    unsafety_isolation: usize,
+    upg: usize,
     verify: bool,
     verify_std: bool,
     scan: bool,
@@ -116,7 +116,7 @@ impl Default for RapCallback {
             safedrop: false,
             show_mir: false,
             show_mir_dot: false,
-            unsafety_isolation: 0,
+            upg: 0,
             verify: false,
             verify_std: false,
             scan: false,
@@ -375,12 +375,12 @@ impl RapCallback {
         self.show_mir_dot
     }
 
-    pub fn enable_unsafety_isolation(&mut self, x: usize) {
-        self.unsafety_isolation = x;
+    pub fn enable_upg(&mut self, x: usize) {
+        self.upg = x;
     }
 
-    pub fn is_unsafety_isolation_enabled(&self) -> usize {
-        self.unsafety_isolation
+    pub fn is_upg_enabled(&self) -> usize {
+        self.upg
     }
 
     pub fn enable_verify(&mut self) {
@@ -541,7 +541,7 @@ pub fn start_analyzer(tcx: TyCtxt, callback: &RapCallback) {
         SSATrans::new(tcx, false).start();
     }
 
-    let x = callback.is_unsafety_isolation_enabled();
+    let x = callback.is_upg_enabled();
     match x {
         1 => UnsafetyIsolationCheck::new(tcx).start(UigInstruction::Audit),
         2 => UnsafetyIsolationCheck::new(tcx).start(UigInstruction::StdAudit),

@@ -1,39 +1,26 @@
-use crate::analysis::core::dataflow::DataFlowAnalysis;
-use crate::analysis::core::dataflow::default::DataFlowAnalyzer;
-use crate::analysis::senryx::contracts::property;
-#[allow(unused)]
-use crate::analysis::senryx::contracts::property::PropertyContract;
-use crate::analysis::senryx::matcher::parse_unsafe_api;
-use crate::analysis::unsafety_isolation::UnsafetyIsolationCheck;
-use crate::analysis::unsafety_isolation::generate_dot::NodeType;
-use crate::analysis::utils::draw_dot::render_dot_string;
-use crate::rap_debug;
-use crate::rap_warn;
-use rustc_data_structures::fx::FxHashMap;
-use rustc_hir::Attribute;
-use rustc_hir::ImplItemKind;
-use rustc_hir::def::DefKind;
-use rustc_hir::def_id::DefId;
-use rustc_middle::mir::BinOp;
-use rustc_middle::mir::Local;
-use rustc_middle::mir::{BasicBlock, Terminator};
-use rustc_middle::ty::{AssocKind, Mutability, Ty, TyCtxt, TyKind};
-use rustc_middle::{
-    mir::{Operand, TerminatorKind},
-    ty,
+use super::draw_dot::render_dot_string;
+use crate::analysis::{
+    core::dataflow::{DataFlowAnalysis, default::DataFlowAnalyzer},
+    senryx::{
+        contracts::{property, property::PropertyContract},
+        matcher::parse_unsafe_api,
+    },
 };
-use rustc_span::def_id::LocalDefId;
-use rustc_span::kw;
-use rustc_span::sym;
-use std::collections::HashMap;
-use std::collections::HashSet;
-use std::fmt::Debug;
-use std::hash::Hash;
+use crate::{rap_debug, rap_warn};
+use rustc_data_structures::fx::FxHashMap;
+use rustc_hir::{Attribute, ImplItemKind, def::DefKind, def_id::DefId};
+use rustc_middle::{
+    mir::{BasicBlock, BinOp, Local, Operand, Terminator, TerminatorKind},
+    ty,
+    ty::{AssocKind, Mutability, Ty, TyCtxt, TyKind},
+};
+use rustc_span::{def_id::LocalDefId, kw, sym};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::Debug,
+    hash::Hash,
+};
 use syn::Expr;
-
-pub fn generate_node_ty(tcx: TyCtxt, def_id: DefId) -> NodeType {
-    (def_id, check_safety(tcx, def_id), get_type(tcx, def_id))
-}
 
 pub fn check_visibility(tcx: TyCtxt, func_defid: DefId) -> bool {
     if !tcx.visibility(func_defid).is_public() {
@@ -114,14 +101,14 @@ pub fn get_cleaned_def_path_name_ori(tcx: TyCtxt, def_id: DefId) -> String {
 
 pub fn get_sp_json() -> serde_json::Value {
     let json_data: serde_json::Value =
-        serde_json::from_str(include_str!("../unsafety_isolation/data/std_sps.json"))
+        serde_json::from_str(include_str!("../upg/data/std_sps.json"))
             .expect("Unable to parse JSON");
     json_data
 }
 
 pub fn get_std_api_signature_json() -> serde_json::Value {
     let json_data: serde_json::Value =
-        serde_json::from_str(include_str!("../unsafety_isolation/data/std_sig.json"))
+        serde_json::from_str(include_str!("../upg/data/std_sig.json"))
             .expect("Unable to parse JSON");
     json_data
 }
@@ -241,34 +228,6 @@ pub fn get_adt_ty(tcx: TyCtxt, def_id: DefId) -> Option<Ty> {
         }
     }
     None
-}
-
-pub fn get_cons(tcx: TyCtxt<'_>, def_id: DefId) -> Vec<NodeType> {
-    let mut cons = Vec::new();
-    if tcx.def_kind(def_id) == DefKind::Fn || get_type(tcx, def_id) == 0 {
-        return cons;
-    }
-    if let Some(assoc_item) = tcx.opt_associated_item(def_id) {
-        if let Some(impl_id) = assoc_item.impl_container(tcx) {
-            // get struct ty
-            let ty = tcx.type_of(impl_id).skip_binder();
-            if let Some(adt_def) = ty.ty_adt_def() {
-                let adt_def_id = adt_def.did();
-                let impls = tcx.inherent_impls(adt_def_id);
-                for impl_def_id in impls {
-                    for item in tcx.associated_item_def_ids(impl_def_id) {
-                        if (tcx.def_kind(item) == DefKind::Fn
-                            || tcx.def_kind(item) == DefKind::AssocFn)
-                            && get_type(tcx, *item) == 0
-                        {
-                            cons.push(generate_node_ty(tcx, *item));
-                        }
-                    }
-                }
-            }
-        }
-    }
-    cons
 }
 
 // check whether this adt contains a literal constructor
@@ -418,55 +377,6 @@ pub fn has_mut_self_param(tcx: TyCtxt, def_id: DefId) -> bool {
         }
     }
     false
-}
-
-// Input the adt def id
-// Return set of (mutable method def_id, fields can be modified)
-pub fn get_all_mutable_methods(tcx: TyCtxt, src_def_id: DefId) -> HashMap<DefId, HashSet<usize>> {
-    let mut std_results = HashMap::new();
-    if get_type(tcx, src_def_id) == 0 {
-        return std_results;
-    }
-    let all_std_fn_def = get_all_std_fns_by_rustc_public(tcx);
-    let target_adt_def = get_adt_def_id_by_adt_method(tcx, src_def_id);
-    let mut uig_entrance = UnsafetyIsolationCheck::new(tcx);
-    let mut is_std = false;
-    for &def_id in &all_std_fn_def {
-        let adt_def = get_adt_def_id_by_adt_method(tcx, def_id);
-        if adt_def.is_some() && adt_def == target_adt_def && src_def_id != def_id {
-            if has_mut_self_param(tcx, def_id) {
-                std_results.insert(def_id, HashSet::new());
-            }
-            is_std = true;
-        }
-    }
-    if is_std {
-        return std_results;
-    }
-
-    let mut results = HashMap::new();
-    let public_fields = target_adt_def.map_or_else(HashSet::new, |def| get_public_fields(tcx, def));
-    let impl_vec = target_adt_def.map_or_else(Vec::new, |def| get_impls_for_struct(tcx, def));
-    for impl_id in impl_vec {
-        if !matches!(tcx.def_kind(impl_id), rustc_hir::def::DefKind::Impl { .. }) {
-            continue;
-        }
-        let associated_items = tcx.associated_items(impl_id);
-        for item in associated_items.in_definition_order() {
-            if let ty::AssocKind::Fn {
-                name: _,
-                has_self: _,
-            } = item.kind
-            {
-                let item_def_id = item.def_id;
-                if has_mut_self_param(tcx, item_def_id) {
-                    let modified_fields = public_fields.clone();
-                    results.insert(item_def_id, modified_fields);
-                }
-            }
-        }
-    }
-    results
 }
 
 // Check each field's visibility, return the public fields vec
@@ -1337,3 +1247,83 @@ pub fn convert_alias_to_sets(alias_map: Vec<usize>) -> Vec<Vec<usize>> {
 
     result
 }
+
+// Input the adt def id
+// Return set of (mutable method def_id, fields can be modified)
+pub fn get_all_mutable_methods(tcx: TyCtxt, src_def_id: DefId) -> HashMap<DefId, HashSet<usize>> {
+    let mut std_results = HashMap::new();
+    if get_type(tcx, src_def_id) == 0 {
+        return std_results;
+    }
+    let all_std_fn_def = get_all_std_fns_by_rustc_public(tcx);
+    let target_adt_def = get_adt_def_id_by_adt_method(tcx, src_def_id);
+    let mut is_std = false;
+    for &def_id in &all_std_fn_def {
+        let adt_def = get_adt_def_id_by_adt_method(tcx, def_id);
+        if adt_def.is_some() && adt_def == target_adt_def && src_def_id != def_id {
+            if has_mut_self_param(tcx, def_id) {
+                std_results.insert(def_id, HashSet::new());
+            }
+            is_std = true;
+        }
+    }
+    if is_std {
+        return std_results;
+    }
+    let mut results = HashMap::new();
+    let public_fields = target_adt_def.map_or_else(HashSet::new, |def| get_public_fields(tcx, def));
+    let impl_vec = target_adt_def.map_or_else(Vec::new, |def| get_impls_for_struct(tcx, def));
+    for impl_id in impl_vec {
+        if !matches!(tcx.def_kind(impl_id), rustc_hir::def::DefKind::Impl { .. }) {
+            continue;
+        }
+        let associated_items = tcx.associated_items(impl_id);
+        for item in associated_items.in_definition_order() {
+            if let ty::AssocKind::Fn {
+                name: _,
+                has_self: _,
+            } = item.kind
+            {
+                let item_def_id = item.def_id;
+                if has_mut_self_param(tcx, item_def_id) {
+                    let modified_fields = public_fields.clone();
+                    results.insert(item_def_id, modified_fields);
+                }
+            }
+        }
+    }
+    results
+}
+
+pub fn get_cons(tcx: TyCtxt<'_>, def_id: DefId) -> Vec<(DefId, bool, usize)> {
+    let mut cons = Vec::new();
+    if tcx.def_kind(def_id) == DefKind::Fn || get_type(tcx, def_id) == 0 {
+        return cons;
+    }
+    if let Some(assoc_item) = tcx.opt_associated_item(def_id) {
+        if let Some(impl_id) = assoc_item.impl_container(tcx) {
+            // get struct ty
+            let ty = tcx.type_of(impl_id).skip_binder();
+            if let Some(adt_def) = ty.ty_adt_def() {
+                let adt_def_id = adt_def.did();
+                let impls = tcx.inherent_impls(adt_def_id);
+                for impl_def_id in impls {
+                    for item in tcx.associated_item_def_ids(impl_def_id) {
+                        if (tcx.def_kind(item) == DefKind::Fn
+                            || tcx.def_kind(item) == DefKind::AssocFn)
+                            && get_type(tcx, *item) == 0
+                        {
+                            cons.push(generate_node_ty(tcx, *item));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    cons
+}
+
+pub fn generate_node_ty(tcx: TyCtxt, def_id: DefId) -> (DefId,bool, usize) {
+    (def_id, check_safety(tcx, def_id), get_type(tcx, def_id))
+}
+

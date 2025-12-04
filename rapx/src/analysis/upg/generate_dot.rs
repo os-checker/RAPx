@@ -1,11 +1,18 @@
 use crate::analysis::utils::fn_info::*;
-use petgraph::Graph;
-use petgraph::dot::{Config, Dot};
-use petgraph::graph::{DiGraph, EdgeReference, NodeIndex};
+use petgraph::{
+    Graph,
+    dot::{Config, Dot},
+    graph::{DiGraph, EdgeReference, NodeIndex},
+};
 use rustc_hir::def_id::DefId;
 use rustc_middle::ty::TyCtxt;
-use std::collections::HashSet;
-use std::fmt::{self, Write};
+use std::{
+    collections::HashSet,
+    fmt::{self, Write},
+};
+
+// def_id, is_unsafe_function(true, false), function type(0-constructor, 1-method, 2-function)
+pub type NodeType = (DefId, bool, usize);
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum UigNode {
@@ -42,9 +49,6 @@ impl fmt::Display for UigEdge {
         }
     }
 }
-
-// def_id, is_unsafe_function(true, false), function type(0-constructor, 1-method, 2-function)
-pub type NodeType = (DefId, bool, usize);
 
 #[derive(Debug, Clone)]
 pub struct UigUnit {

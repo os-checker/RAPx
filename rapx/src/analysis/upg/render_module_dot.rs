@@ -1,10 +1,16 @@
-use std::collections::{HashMap, HashSet};
-use std::fmt::Write;
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::Write,
+};
 
-use crate::analysis::unsafety_isolation::UnsafetyIsolationCheck;
-use crate::analysis::unsafety_isolation::generate_dot::{NodeType, UigEdge, UigNode, UigUnit};
-use crate::analysis::utils::draw_dot::render_dot_graphs;
-use crate::analysis::utils::fn_info::{check_safety, get_type};
+use super::{
+    UnsafetyIsolationCheck,
+    generate_dot::{NodeType, UigEdge, UigNode, UigUnit},
+};
+use crate::analysis::utils::{
+    draw_dot::render_dot_graphs,
+    fn_info::{check_safety, get_type},
+};
 use rustc_hir::def_id::DefId;
 use rustc_middle::ty::TyCtxt;
 

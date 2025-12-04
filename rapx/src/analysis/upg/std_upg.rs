@@ -1,17 +1,14 @@
-use super::{
-    UnsafetyIsolationCheck,
-    generate_dot::{NodeType, UigUnit},
+use super::{UnsafetyIsolationCheck, generate_dot::{NodeType, UigUnit}};
+use crate::analysis::utils::{fn_info::*, show_mir::display_mir};
+use rustc_hir::{def::DefKind, def_id::DefId};
+use rustc_middle::{
+    mir::Local,
+    ty,
+    ty::{TyCtxt, Visibility},
 };
-use crate::analysis::utils::fn_info::*;
-use crate::analysis::utils::show_mir::display_mir;
-use rustc_hir::def::DefKind;
-use rustc_hir::def_id::DefId;
-use rustc_middle::mir::Local;
-use rustc_middle::ty::Visibility;
-use rustc_middle::{ty, ty::TyCtxt};
 use rustc_span::Symbol;
-use std::collections::HashMap;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
+
 
 impl<'tcx> UnsafetyIsolationCheck<'tcx> {
     pub fn audit_std_unsafe(&mut self) {

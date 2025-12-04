@@ -25,7 +25,7 @@ use crate::{
     analysis::{
         Analysis,
         core::alias_analysis::{AAResult, AliasAnalysis, default::AliasAnalyzer},
-        unsafety_isolation::{
+        upg::{
             UnsafetyIsolationCheck,
             hir_visitor::{ContainsUnsafe, RelatedFnCollector},
         },

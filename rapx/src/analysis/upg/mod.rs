@@ -1,13 +1,11 @@
 pub mod generate_dot;
 pub mod hir_visitor;
 pub mod render_module_dot;
-pub mod std_unsafety_isolation;
+pub mod std_upg;
 
-use crate::analysis::unsafety_isolation::generate_dot::UigUnit;
-use crate::analysis::unsafety_isolation::hir_visitor::{ContainsUnsafe, RelatedFnCollector};
-use crate::analysis::unsafety_isolation::std_unsafety_isolation::IsolationGraphNode;
-use crate::analysis::utils::draw_dot::render_dot_graphs;
-use crate::analysis::utils::fn_info::*;
+use crate::analysis::utils::{draw_dot::render_dot_graphs, fn_info::*};
+use generate_dot::UigUnit;
+use hir_visitor::{ContainsUnsafe, RelatedFnCollector};
 use rustc_hir::def_id::DefId;
 use rustc_middle::{
     mir::{Operand, TerminatorKind},
@@ -15,6 +13,7 @@ use rustc_middle::{
     ty::TyCtxt,
 };
 use std::collections::VecDeque;
+use std_upg::IsolationGraphNode;
 
 #[derive(PartialEq)]
 pub enum UigInstruction {
@@ -305,3 +304,4 @@ impl<'tcx> UnsafetyIsolationCheck<'tcx> {
         }
     }
 }
+
