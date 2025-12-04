@@ -3,5 +3,5 @@
 version = 4
 
 [[package]]
-name = "test_cons_merge"
+name = "struct"
 version = "0.1.0"

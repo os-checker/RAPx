@@ -3,5 +3,5 @@
 version = 4
 
 [[package]]
-name = "audit_case1"
+name = "static_mut"
 version = "0.1.0"
