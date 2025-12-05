@@ -1,11 +1,17 @@
+/*
+ * This module generates the unsafety propagation graph for each Rust module in the target crate.
+ */
+pub mod fn_collector;
 pub mod generate_dot;
 pub mod hir_visitor;
 pub mod render_module_dot;
 pub mod std_upg;
+pub mod upg_graph;
 
 use crate::analysis::utils::{draw_dot::render_dot_graphs, fn_info::*};
-use generate_dot::UigUnit;
-use hir_visitor::{ContainsUnsafe, RelatedFnCollector};
+use fn_collector::FnCollector;
+use generate_dot::UPGUnit;
+use hir_visitor::ContainsUnsafe;
 use rustc_hir::def_id::DefId;
 use rustc_middle::{
     mir::{Operand, TerminatorKind},
@@ -13,23 +19,23 @@ use rustc_middle::{
     ty::TyCtxt,
 };
 use std::collections::VecDeque;
-use std_upg::IsolationGraphNode;
+use upg_graph::IsolationGraphNode;
 
 #[derive(PartialEq)]
-pub enum UigInstruction {
-    Audit,
-    StdAudit,
+pub enum TargetCrate {
+    Std,
+    Other,
 }
 
-pub struct UnsafetyIsolationCheck<'tcx> {
+pub struct UPGAnalysis<'tcx> {
     pub tcx: TyCtxt<'tcx>,
     pub nodes: Vec<IsolationGraphNode>,
     pub related_func_def_id: Vec<DefId>,
-    pub uigs: Vec<UigUnit>,
-    pub single: Vec<UigUnit>,
+    pub uigs: Vec<UPGUnit>,
+    pub single: Vec<UPGUnit>,
 }
 
-impl<'tcx> UnsafetyIsolationCheck<'tcx> {
+impl<'tcx> UPGAnalysis<'tcx> {
     pub fn new(tcx: TyCtxt<'tcx>) -> Self {
         Self {
             tcx,
@@ -40,27 +46,31 @@ impl<'tcx> UnsafetyIsolationCheck<'tcx> {
         }
     }
 
-    pub fn start(&mut self, ins: UigInstruction) {
-        if ins == UigInstruction::StdAudit {
-            self.audit_std_unsafe();
-            return;
-        }
-        let related_items = RelatedFnCollector::collect(self.tcx);
-        for vec in related_items.values() {
-            for (body_id, _span) in vec {
-                let (function_unsafe, block_unsafe) =
-                    ContainsUnsafe::contains_unsafe(self.tcx, *body_id);
-                let def_id = self.tcx.hir_body_owner_def_id(*body_id).to_def_id();
-                if function_unsafe | block_unsafe {
-                    self.insert_uig(
-                        def_id,
-                        get_callees(self.tcx, def_id),
-                        get_cons(self.tcx, def_id),
-                    );
+    pub fn start(&mut self, ins: TargetCrate) {
+        match ins {
+            TargetCrate::Std => {
+                self.audit_std_unsafe();
+                return;
+            }
+            _ => {
+                let related_items = FnCollector::collect(self.tcx);
+                for vec in related_items.values() {
+                    for (body_id, _span) in vec {
+                        let (function_unsafe, block_unsafe) =
+                            ContainsUnsafe::contains_unsafe(self.tcx, *body_id);
+                        let def_id = self.tcx.hir_body_owner_def_id(*body_id).to_def_id();
+                        if function_unsafe | block_unsafe {
+                            self.insert_uig(
+                                def_id,
+                                get_callees(self.tcx, def_id),
+                                get_cons(self.tcx, def_id),
+                            );
+                        }
+                    }
                 }
+                self.render_module_dot();
             }
         }
-        self.render_module_dot();
     }
 
     pub fn render_dot(&mut self) {
@@ -79,7 +89,7 @@ impl<'tcx> UnsafetyIsolationCheck<'tcx> {
     }
 
     pub fn filter_and_extend_unsafe(&mut self) {
-        let related_items = RelatedFnCollector::collect(self.tcx);
+        let related_items = FnCollector::collect(self.tcx);
         let mut queue = VecDeque::new();
         let mut visited = std::collections::HashSet::new();
 
@@ -304,4 +314,3 @@ impl<'tcx> UnsafetyIsolationCheck<'tcx> {
         }
     }
 }
-

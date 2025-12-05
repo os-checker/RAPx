@@ -1323,7 +1323,6 @@ pub fn get_cons(tcx: TyCtxt<'_>, def_id: DefId) -> Vec<(DefId, bool, usize)> {
     cons
 }
 
-pub fn generate_node_ty(tcx: TyCtxt, def_id: DefId) -> (DefId,bool, usize) {
+pub fn generate_node_ty(tcx: TyCtxt, def_id: DefId) -> (DefId, bool, usize) {
     (def_id, check_safety(tcx, def_id), get_type(tcx, def_id))
 }
-

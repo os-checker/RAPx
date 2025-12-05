@@ -25,10 +25,7 @@ use crate::{
     analysis::{
         Analysis,
         core::alias_analysis::{AAResult, AliasAnalysis, default::AliasAnalyzer},
-        upg::{
-            UnsafetyIsolationCheck,
-            hir_visitor::{ContainsUnsafe, RelatedFnCollector},
-        },
+        upg::{UPGAnalysis, fn_collector::FnCollector, hir_visitor::ContainsUnsafe},
         utils::fn_info::*,
     },
     rap_info, rap_warn,
@@ -64,7 +61,7 @@ impl<'tcx> SenryxCheck<'tcx> {
         let mut analyzer = AliasAnalyzer::new(self.tcx);
         analyzer.run();
         let fn_map = &analyzer.get_all_fn_alias();
-        let related_items = RelatedFnCollector::collect(tcx);
+        let related_items = FnCollector::collect(tcx);
         for vec in related_items.clone().values() {
             for (body_id, _span) in vec {
                 let (function_unsafe, block_unsafe) =
@@ -227,7 +224,7 @@ impl<'tcx> SenryxCheck<'tcx> {
     }
 
     pub fn body_visit_and_check_uig(&self, def_id: DefId) {
-        let mut uig_checker = UnsafetyIsolationCheck::new(self.tcx);
+        let mut uig_checker = UPGAnalysis::new(self.tcx);
         let func_type = get_type(self.tcx, def_id);
         if func_type == 1 && !self.get_annotation(def_id).is_empty() {
             let func_cons = uig_checker.search_constructor(def_id);

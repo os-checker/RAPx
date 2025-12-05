@@ -4,8 +4,8 @@ use std::{
 };
 
 use super::{
-    UnsafetyIsolationCheck,
-    generate_dot::{NodeType, UigEdge, UigNode, UigUnit},
+    UPGAnalysis,
+    generate_dot::{NodeType, UPGEdge, UPGNode, UPGUnit},
 };
 use crate::analysis::utils::{
     draw_dot::render_dot_graphs,
@@ -14,12 +14,12 @@ use crate::analysis::utils::{
 use rustc_hir::def_id::DefId;
 use rustc_middle::ty::TyCtxt;
 
-impl<'tcx> UnsafetyIsolationCheck<'tcx> {
+impl<'tcx> UPGAnalysis<'tcx> {
     /// Main function to aggregate data and render DOT graphs per module.
     pub fn render_module_dot(&self) {
         let mut modules_data: HashMap<String, ModuleGraphData> = HashMap::new();
 
-        let mut collect_unit = |unit: &UigUnit| {
+        let mut collect_unit = |unit: &UPGUnit| {
             let caller_id = unit.caller.0;
             let module_name = self.get_module_name(caller_id);
 
@@ -37,7 +37,7 @@ impl<'tcx> UnsafetyIsolationCheck<'tcx> {
                     let label = format!("Literal Constructor: {}", self.tcx.item_name(adt_def_id));
                     module_data.add_node(self.tcx, adt_node_type, Some(label));
                     if unit.caller.2 == 1 {
-                        module_data.add_edge(adt_def_id, caller_id, UigEdge::ConsToMethod);
+                        module_data.add_edge(adt_def_id, caller_id, UPGEdge::ConsToMethod);
                     }
                 } else {
                     let adt_node_type = (adt_def_id, false, 1);
@@ -47,7 +47,7 @@ impl<'tcx> UnsafetyIsolationCheck<'tcx> {
                     );
                     module_data.add_node(self.tcx, adt_node_type, Some(label));
                     if unit.caller.2 == 1 {
-                        module_data.add_edge(adt_def_id, caller_id, UigEdge::MutToCaller);
+                        module_data.add_edge(adt_def_id, caller_id, UPGEdge::MutToCaller);
                     }
                 }
             }
@@ -55,7 +55,7 @@ impl<'tcx> UnsafetyIsolationCheck<'tcx> {
             // Edge from associated item (constructor) to the method.
             for cons in &unit.caller_cons {
                 module_data.add_node(self.tcx, *cons, None);
-                module_data.add_edge(cons.0, unit.caller.0, UigEdge::ConsToMethod);
+                module_data.add_edge(cons.0, unit.caller.0, UPGEdge::ConsToMethod);
             }
 
             // Edge from mutable access to the caller.
@@ -65,17 +65,17 @@ impl<'tcx> UnsafetyIsolationCheck<'tcx> {
                 let node = (*mut_method_id, is_unsafe, node_type);
 
                 module_data.add_node(self.tcx, node, None);
-                module_data.add_edge(*mut_method_id, unit.caller.0, UigEdge::MutToCaller);
+                module_data.add_edge(*mut_method_id, unit.caller.0, UPGEdge::MutToCaller);
             }
 
             // Edge representing a call from caller to callee.
             for (callee, callee_cons_vec) in &unit.callee_cons_pair {
                 module_data.add_node(self.tcx, *callee, None);
-                module_data.add_edge(unit.caller.0, callee.0, UigEdge::CallerToCallee);
+                module_data.add_edge(unit.caller.0, callee.0, UPGEdge::CallerToCallee);
 
                 for callee_cons in callee_cons_vec {
                     module_data.add_node(self.tcx, *callee_cons, None);
-                    module_data.add_edge(callee_cons.0, callee.0, UigEdge::ConsToMethod);
+                    module_data.add_edge(callee_cons.0, callee.0, UPGEdge::ConsToMethod);
                 }
             }
         };
@@ -118,7 +118,7 @@ struct ModuleGraphData {
     // Nodes grouped by their associated struct/type name.
     struct_clusters: HashMap<String, HashSet<NodeType>>,
     // Edges between DefIds with their type.
-    edges: HashSet<(DefId, DefId, UigEdge)>,
+    edges: HashSet<(DefId, DefId, UPGEdge)>,
     // Pre-generated DOT attribute strings for each node (DefId).
     node_styles: HashMap<DefId, String>,
 }
@@ -154,7 +154,7 @@ impl ModuleGraphData {
                     )
                 }
             } else {
-                let uig_node = UigUnit::get_node_ty(node);
+                let uig_node = UPGUnit::get_node_ty(node);
                 self.node_to_dot_attr(tcx, &uig_node)
             };
 
@@ -162,7 +162,7 @@ impl ModuleGraphData {
         }
     }
 
-    fn add_edge(&mut self, from: DefId, to: DefId, edge_type: UigEdge) {
+    fn add_edge(&mut self, from: DefId, to: DefId, edge_type: UPGEdge) {
         if from == to {
             return;
         }
@@ -198,12 +198,12 @@ impl ModuleGraphData {
         "Free_Functions".to_string()
     }
 
-    fn node_to_dot_attr(&self, _tcx: TyCtxt<'_>, node: &UigNode) -> String {
+    fn node_to_dot_attr(&self, _tcx: TyCtxt<'_>, node: &UPGNode) -> String {
         match node {
-            UigNode::Safe(def_id, shape) => {
+            UPGNode::SafeFn(def_id, shape) => {
                 format!("label=\"{:?}\", color=black, shape={:?}", def_id, shape)
             }
-            UigNode::Unsafe(def_id, shape) => {
+            UPGNode::UnsafeFn(def_id, shape) => {
                 let label = format!("{:?}", def_id);
                 format!("label=\"{}\", shape={:?}, color=red", label, shape)
             }
@@ -249,9 +249,9 @@ impl ModuleGraphData {
             let to_id = format!("n_{:?}", to).replace(|c: char| !c.is_alphanumeric(), "_");
 
             let attr = match edge_type {
-                UigEdge::CallerToCallee => "color=black, style=solid",
-                UigEdge::ConsToMethod => "color=black, style=dotted",
-                UigEdge::MutToCaller => "color=blue, style=dashed",
+                UPGEdge::CallerToCallee => "color=black, style=solid",
+                UPGEdge::ConsToMethod => "color=black, style=dotted",
+                UPGEdge::MutToCaller => "color=blue, style=dashed",
             };
 
             writeln!(dot, "    {} -> {} [{}];", from_id, to_id, attr).unwrap();

@@ -1,4 +1,7 @@
-use super::{UnsafetyIsolationCheck, generate_dot::{NodeType, UigUnit}};
+use super::{
+    UPGAnalysis,
+    generate_dot::{NodeType, UPGUnit},
+};
 use crate::analysis::utils::{fn_info::*, show_mir::display_mir};
 use rustc_hir::{def::DefKind, def_id::DefId};
 use rustc_middle::{
@@ -9,8 +12,7 @@ use rustc_middle::{
 use rustc_span::Symbol;
 use std::collections::{HashMap, HashSet};
 
-
-impl<'tcx> UnsafetyIsolationCheck<'tcx> {
+impl<'tcx> UPGAnalysis<'tcx> {
     pub fn audit_std_unsafe(&mut self) {
         let all_std_fn_def = get_all_std_fns_by_rustc_public(self.tcx);
         // Specific task for vec;
@@ -408,7 +410,7 @@ impl<'tcx> UnsafetyIsolationCheck<'tcx> {
         }
         let mut_methods_set = get_all_mutable_methods(self.tcx, caller);
         let mut_methods = mut_methods_set.keys().copied().collect();
-        let uig = UigUnit::new_by_pair(
+        let uig = UPGUnit::new_by_pair(
             generate_node_ty(self.tcx, caller),
             caller_cons,
             pairs,
@@ -418,48 +420,6 @@ impl<'tcx> UnsafetyIsolationCheck<'tcx> {
             self.uigs.push(uig);
         } else {
             self.single.push(uig);
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct IsolationGraphNode {
-    pub node_id: DefId,
-    //0:constructor, 1:method, 2:function
-    pub node_type: usize,
-    pub node_name: String,
-    pub node_unsafety: bool,
-    //if this node is a method, then it may have constructors
-    pub constructors: Vec<DefId>,
-    //record all unsafe callees
-    pub callees: Vec<DefId>,
-    //tag if this node has been visited for its unsafe callees
-    pub methods: Vec<DefId>,
-    pub callers: Vec<DefId>,
-    pub visited_tag: bool,
-    //record the source of the func
-    pub is_crate_api: bool,
-}
-
-impl IsolationGraphNode {
-    pub fn new(
-        node_id: DefId,
-        node_type: usize,
-        node_name: String,
-        node_unsafety: bool,
-        is_crate_api: bool,
-    ) -> Self {
-        Self {
-            node_id,
-            node_type,
-            node_name,
-            node_unsafety,
-            constructors: Vec::new(),
-            callees: Vec::new(),
-            methods: Vec::new(),
-            callers: Vec::new(),
-            visited_tag: false,
-            is_crate_api,
         }
     }
 }

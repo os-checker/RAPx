@@ -15,50 +15,50 @@ use std::{
 pub type NodeType = (DefId, bool, usize);
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub enum UigNode {
-    Safe(DefId, String),
-    Unsafe(DefId, String),
+pub enum UPGNode {
+    SafeFn(DefId, String),
+    UnsafeFn(DefId, String),
     MergedCallerCons(String),
     MutMethods(String),
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
-pub enum UigEdge {
+pub enum UPGEdge {
     CallerToCallee,
     ConsToMethod,
     MutToCaller,
 }
 
-impl fmt::Display for UigNode {
+impl fmt::Display for UPGNode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            UigNode::Safe(_, _) => write!(f, "Safe"),
-            UigNode::Unsafe(_, _) => write!(f, "Unsafe"),
-            UigNode::MergedCallerCons(_) => write!(f, "MergedCallerCons"),
-            UigNode::MutMethods(_) => write!(f, "MutMethods"),
+            UPGNode::SafeFn(_, _) => write!(f, "Safe"),
+            UPGNode::UnsafeFn(_, _) => write!(f, "Unsafe"),
+            UPGNode::MergedCallerCons(_) => write!(f, "MergedCallerCons"),
+            UPGNode::MutMethods(_) => write!(f, "MutMethods"),
         }
     }
 }
 
-impl fmt::Display for UigEdge {
+impl fmt::Display for UPGEdge {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            UigEdge::CallerToCallee => write!(f, "CallerToCallee"),
-            UigEdge::ConsToMethod => write!(f, "ConsToMethod"),
-            UigEdge::MutToCaller => write!(f, "MutToCaller"),
+            UPGEdge::CallerToCallee => write!(f, "CallerToCallee"),
+            UPGEdge::ConsToMethod => write!(f, "ConsToMethod"),
+            UPGEdge::MutToCaller => write!(f, "MutToCaller"),
         }
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct UigUnit {
+pub struct UPGUnit {
     pub caller: NodeType,
     pub caller_cons: Vec<NodeType>,
     pub callee_cons_pair: HashSet<(NodeType, Vec<NodeType>)>,
     pub mut_methods: Vec<DefId>,
 }
 
-impl UigUnit {
+impl UPGUnit {
     pub fn new(caller: NodeType, caller_cons: Vec<NodeType>) -> Self {
         Self {
             caller,
@@ -153,46 +153,46 @@ impl UigUnit {
     }
 
     /// (node.0, node.1, node.2) : (def_id, is_unsafe, type_of_func--0:cons,1:method,2:function)
-    pub fn get_node_ty(node: NodeType) -> UigNode {
+    pub fn get_node_ty(node: NodeType) -> UPGNode {
         match (node.1, node.2) {
-            (true, 0) => UigNode::Unsafe(node.0, "septagon".to_string()),
-            (true, 1) => UigNode::Unsafe(node.0, "ellipse".to_string()),
-            (true, 2) => UigNode::Unsafe(node.0, "box".to_string()),
-            (false, 0) => UigNode::Safe(node.0, "septagon".to_string()),
-            (false, 1) => UigNode::Safe(node.0, "ellipse".to_string()),
-            (false, 2) => UigNode::Safe(node.0, "box".to_string()),
-            _ => UigNode::Safe(node.0, "ellipse".to_string()),
+            (true, 0) => UPGNode::UnsafeFn(node.0, "septagon".to_string()),
+            (true, 1) => UPGNode::UnsafeFn(node.0, "ellipse".to_string()),
+            (true, 2) => UPGNode::UnsafeFn(node.0, "box".to_string()),
+            (false, 0) => UPGNode::SafeFn(node.0, "septagon".to_string()),
+            (false, 1) => UPGNode::SafeFn(node.0, "ellipse".to_string()),
+            (false, 2) => UPGNode::SafeFn(node.0, "box".to_string()),
+            _ => UPGNode::SafeFn(node.0, "ellipse".to_string()),
         }
     }
 
     pub fn generate_dot_str(&self) -> String {
-        let mut graph: Graph<UigNode, UigEdge> = DiGraph::new();
-        let get_edge_attr = |_graph: &Graph<UigNode, UigEdge>,
-                             edge_ref: EdgeReference<'_, UigEdge>| {
+        let mut graph: Graph<UPGNode, UPGEdge> = DiGraph::new();
+        let get_edge_attr = |_graph: &Graph<UPGNode, UPGEdge>,
+                             edge_ref: EdgeReference<'_, UPGEdge>| {
             match edge_ref.weight() {
-                UigEdge::CallerToCallee => "color=black, style=solid",
-                UigEdge::ConsToMethod => "color=black, style=dotted",
-                UigEdge::MutToCaller => "color=blue, style=dashed",
+                UPGEdge::CallerToCallee => "color=black, style=solid",
+                UPGEdge::ConsToMethod => "color=black, style=dotted",
+                UPGEdge::MutToCaller => "color=blue, style=dashed",
             }
             .to_owned()
         };
         let get_node_attr =
-            |_graph: &Graph<UigNode, UigEdge>, node_ref: (NodeIndex, &UigNode)| match node_ref.1 {
-                UigNode::Safe(def_id, shape) => {
+            |_graph: &Graph<UPGNode, UPGEdge>, node_ref: (NodeIndex, &UPGNode)| match node_ref.1 {
+                UPGNode::SafeFn(def_id, shape) => {
                     format!("label=\"{:?}\", color=black, shape={:?}", def_id, shape)
                 }
-                UigNode::Unsafe(def_id, shape) => {
+                UPGNode::UnsafeFn(def_id, shape) => {
                     let label = format!("{:?}\n ", def_id);
                     let node_attr = format!("label={:?}, shape={:?}, color=red", label, shape);
                     node_attr
                 }
-                UigNode::MergedCallerCons(label) => {
+                UPGNode::MergedCallerCons(label) => {
                     format!(
                         "label=\"{}\", shape=box, style=filled, fillcolor=lightgrey",
                         label
                     )
                 }
-                UigNode::MutMethods(label) => {
+                UPGNode::MutMethods(label) => {
                     format!(
                         "label=\"{}\", shape=octagon, style=filled, fillcolor=lightyellow",
                         label
@@ -208,8 +208,8 @@ impl UigUnit {
                 .map(|(def_id, _, _)| format!("{:?}", def_id))
                 .collect();
             let merged_label = format!("Caller Constructors\n{}", cons_labels.join("\n"));
-            let merged_cons_node = graph.add_node(UigNode::MergedCallerCons(merged_label));
-            graph.add_edge(merged_cons_node, caller_node, UigEdge::ConsToMethod);
+            let merged_cons_node = graph.add_node(UPGNode::MergedCallerCons(merged_label));
+            graph.add_edge(merged_cons_node, caller_node, UPGEdge::ConsToMethod);
         }
 
         if !self.mut_methods.is_empty() {
@@ -220,17 +220,17 @@ impl UigUnit {
                 .collect();
             let merged_label = format!("Mutable Methods\n{}", mut_method_labels.join("\n"));
 
-            let mut_methods_node = graph.add_node(UigNode::MutMethods(merged_label));
-            graph.add_edge(mut_methods_node, caller_node, UigEdge::MutToCaller);
+            let mut_methods_node = graph.add_node(UPGNode::MutMethods(merged_label));
+            graph.add_edge(mut_methods_node, caller_node, UPGEdge::MutToCaller);
         }
 
         for (callee, cons) in &self.callee_cons_pair {
             let callee_node = graph.add_node(Self::get_node_ty(*callee));
             for callee_cons in cons {
                 let callee_cons_node = graph.add_node(Self::get_node_ty(*callee_cons));
-                graph.add_edge(callee_cons_node, callee_node, UigEdge::ConsToMethod);
+                graph.add_edge(callee_cons_node, callee_node, UPGEdge::ConsToMethod);
             }
-            graph.add_edge(caller_node, callee_node, UigEdge::CallerToCallee);
+            graph.add_edge(caller_node, callee_node, UPGEdge::CallerToCallee);
         }
 
         let mut dot_str = String::new();

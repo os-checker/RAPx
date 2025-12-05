@@ -49,7 +49,7 @@ use analysis::{
     safedrop::SafeDrop,
     senryx::{CheckLevel, SenryxCheck},
     test::Test,
-    upg::{UigInstruction, UnsafetyIsolationCheck},
+    upg::{TargetCrate, UPGAnalysis},
     utils::show_mir::ShowMir,
 };
 use rustc_ast::ast;
@@ -543,8 +543,8 @@ pub fn start_analyzer(tcx: TyCtxt, callback: &RapCallback) {
 
     let x = callback.is_upg_enabled();
     match x {
-        1 => UnsafetyIsolationCheck::new(tcx).start(UigInstruction::Audit),
-        2 => UnsafetyIsolationCheck::new(tcx).start(UigInstruction::StdAudit),
+        1 => UPGAnalysis::new(tcx).start(TargetCrate::Other),
+        2 => UPGAnalysis::new(tcx).start(TargetCrate::Std),
         _ => {}
     }
 
