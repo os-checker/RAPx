@@ -1,4 +1,4 @@
-use crate::analysis::utils::{fn_info::*, types::FnType};
+use crate::analysis::utils::{fn_info::*, types::FnKind};
 use petgraph::{
     Graph,
     dot::{Config, Dot},
@@ -13,7 +13,7 @@ use std::{
 };
 
 // def_id, is_unsafe_function(true, false), function type(0-constructor, 1-method, 2-function)
-pub type NodeType = (DefId, bool, FnType);
+pub type NodeType = (DefId, bool, FnKind);
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum UPGNode {
@@ -78,25 +78,25 @@ impl UPGUnit {
         if self.caller.1 && self.callees.is_empty() {
             data[0] += 1;
         }
-        if !self.caller.1 && self.caller.2 != FnType::Method {
+        if !self.caller.1 && self.caller.2 != FnKind::Method {
             for callee in &self.callees {
-                if callee.2 == FnType::Method {
+                if callee.2 == FnKind::Method {
                     data[2] += 1;
                 } else {
                     data[1] += 1;
                 }
             }
         }
-        if self.caller.1 && self.caller.2 != FnType::Method {
+        if self.caller.1 && self.caller.2 != FnKind::Method {
             for callee in &self.callees {
-                if callee.2 == FnType::Method {
+                if callee.2 == FnKind::Method {
                     data[4] += 1;
                 } else {
                     data[3] += 1;
                 }
             }
         }
-        if self.caller.1 && self.caller.2 == FnType::Method {
+        if self.caller.1 && self.caller.2 == FnKind::Method {
             let mut unsafe_cons = 0;
             let mut safe_cons = 0;
             for cons in &self.caller_cons {
@@ -110,7 +110,7 @@ impl UPGUnit {
                 safe_cons = 1;
             }
             for callee in &self.callees {
-                if callee.2 == FnType::Method {
+                if callee.2 == FnKind::Method {
                     data[7] += safe_cons;
                     data[8] += unsafe_cons;
                 } else {
@@ -119,7 +119,7 @@ impl UPGUnit {
                 }
             }
         }
-        if !self.caller.1 && self.caller.2 == FnType::Method {
+        if !self.caller.1 && self.caller.2 == FnKind::Method {
             let mut unsafe_cons = 0;
             let mut safe_cons = 0;
             for cons in &self.caller_cons {
@@ -133,7 +133,7 @@ impl UPGUnit {
                 safe_cons = 1;
             }
             for callee in &self.callees {
-                if callee.2 == FnType::Method {
+                if callee.2 == FnKind::Method {
                     data[11] += safe_cons;
                     data[12] += unsafe_cons;
                 } else {
@@ -147,12 +147,12 @@ impl UPGUnit {
     /// (node.0, node.1, node.2) : (def_id, is_unsafe, type_of_func--0:cons,1:method,2:function)
     pub fn get_node_ty(node: NodeType) -> UPGNode {
         match (node.1, node.2) {
-            (true, FnType::Constructor) => UPGNode::UnsafeFn(node.0, "septagon".to_string()),
-            (true, FnType::Method) => UPGNode::UnsafeFn(node.0, "ellipse".to_string()),
-            (true, FnType::Fn) => UPGNode::UnsafeFn(node.0, "box".to_string()),
-            (false, FnType::Constructor) => UPGNode::SafeFn(node.0, "septagon".to_string()),
-            (false, FnType::Method) => UPGNode::SafeFn(node.0, "ellipse".to_string()),
-            (false, FnType::Fn) => UPGNode::SafeFn(node.0, "box".to_string()),
+            (true, FnKind::Constructor) => UPGNode::UnsafeFn(node.0, "septagon".to_string()),
+            (true, FnKind::Method) => UPGNode::UnsafeFn(node.0, "ellipse".to_string()),
+            (true, FnKind::Fn) => UPGNode::UnsafeFn(node.0, "box".to_string()),
+            (false, FnKind::Constructor) => UPGNode::SafeFn(node.0, "septagon".to_string()),
+            (false, FnKind::Method) => UPGNode::SafeFn(node.0, "ellipse".to_string()),
+            (false, FnKind::Fn) => UPGNode::SafeFn(node.0, "box".to_string()),
         }
     }
 

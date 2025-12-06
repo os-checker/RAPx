@@ -26,7 +26,7 @@ use crate::{
         Analysis,
         core::alias_analysis::{AAResult, AliasAnalysis, default::AliasAnalyzer},
         upg::{fn_collector::FnCollector, hir_visitor::ContainsUnsafe},
-        utils::{fn_info::*, types::FnType},
+        utils::{fn_info::*, types::FnKind},
     },
     rap_info, rap_warn,
 };
@@ -192,7 +192,7 @@ impl<'tcx> SenryxCheck<'tcx> {
         let mut body_visitor = BodyVisitor::new(self.tcx, def_id, self.global_recorder.clone(), 0);
         let target_name = get_cleaned_def_path_name(self.tcx, def_id);
         rap_info!("Begin verification process for: {:?}", target_name);
-        if get_type(self.tcx, def_id) == FnType::Method {
+        if get_type(self.tcx, def_id) == FnKind::Method {
             let cons = get_cons(self.tcx, def_id);
             let mut base_inter_result = InterResultNode::new_default(get_adt_ty(self.tcx, def_id));
             for con in cons {
@@ -225,7 +225,7 @@ impl<'tcx> SenryxCheck<'tcx> {
 
     pub fn body_visit_and_check_uig(&self, def_id: DefId) {
         let func_type = get_type(self.tcx, def_id);
-        if func_type == FnType::Method && !self.get_annotation(def_id).is_empty() {
+        if func_type == FnKind::Method && !self.get_annotation(def_id).is_empty() {
             let func_cons = search_constructor(self.tcx, def_id);
             for func_con in func_cons {
                 if check_safety(self.tcx, func_con) {
