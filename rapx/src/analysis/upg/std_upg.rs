@@ -63,7 +63,7 @@ impl<'tcx> UPGAnalysis<'tcx> {
         &mut self,
         tcx: TyCtxt<'tcx>,
     ) -> HashSet<DefId> {
-        let mut unsafe_fn = HashSet::new();
+        let mut unsafe_fn = HashSet::default();
         let mut total_cnt = 0;
         let mut api_cnt = 0;
         let mut sp_cnt = 0;
@@ -167,7 +167,7 @@ impl<'tcx> UPGAnalysis<'tcx> {
     }
 
     pub fn analyze_struct(&self) {
-        let mut cache = HashSet::new();
+        let mut cache = HashSet::default();
         let mut s = 0;
         let mut u = 0;
         let mut e = 0;

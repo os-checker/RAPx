@@ -55,23 +55,23 @@ impl<'tcx> UPGAnalysis<'tcx> {
             _ => {
                 /* Type of collected data: FxHashMap<Option<HirId>, Vec<(BodyId, Span)>>;
                  * For a function, the Vec contains only one entry;
-                 * For implementations of structs and traits, the Vec contains all associated 
+                 * For implementations of structs and traits, the Vec contains all associated
                  * function entries.
                  */
                 let fns = FnCollector::collect(self.tcx);
                 for vec in fns.values() {
-                    for (body_id, _span) in vec { // each function or associated function in
-                                                  // structs and traits
+                    for (body_id, _span) in vec {
+                        // each function or associated function in
+                        // structs and traits
                         let (fn_unsafe, block_unsafe) =
                             ContainsUnsafe::contains_unsafe(self.tcx, *body_id);
                         // map the function body_id back to its def_id;
                         let def_id = self.tcx.hir_body_owner_def_id(*body_id).to_def_id();
                         if fn_unsafe | block_unsafe {
-                            self.insert_upg(
-                                def_id,
-                                get_callees(self.tcx, def_id),
-                                get_cons(self.tcx, def_id),
-                            );
+                            let callees = get_callees(self.tcx, def_id);
+                            let constructors = get_cons(self.tcx, def_id);
+
+                            self.insert_upg(def_id, callees, constructors);
                         }
                     }
                 }
@@ -98,7 +98,7 @@ impl<'tcx> UPGAnalysis<'tcx> {
     pub fn filter_and_extend_unsafe(&mut self) {
         let related_items = FnCollector::collect(self.tcx);
         let mut queue = VecDeque::new();
-        let mut visited = std::collections::HashSet::new();
+        let mut visited = HashSet::new();
 
         //'related_items' is used for recording whether this api is in crate or not
         //then init the queue, including all unsafe func and interior unsafe func
@@ -324,26 +324,25 @@ impl<'tcx> UPGAnalysis<'tcx> {
     pub fn insert_upg(
         &mut self,
         caller: DefId,
-        callee_set: HashSet<DefId>,
+        callees: HashSet<DefId>,
         caller_cons: Vec<NodeType>,
     ) {
-        let mut pairs = HashSet::new();
-        for callee in &callee_set {
-            let callee_cons = Vec::new();
-            pairs.insert((generate_node_ty(self.tcx, *callee), callee_cons));
+        let mut callees_typed = HashSet::new();
+        for callee in &callees {
+            callees_typed.insert(generate_node_ty(self.tcx, *callee));
         }
-        if !check_safety(self.tcx, caller) && callee_set.is_empty() {
+        if !check_safety(self.tcx, caller) && callees.is_empty() {
             return;
         }
         let mut_methods_set = get_all_mutable_methods(self.tcx, caller);
         let mut_methods = mut_methods_set.keys().copied().collect();
         let uig = UPGUnit::new_by_pair(
             generate_node_ty(self.tcx, caller),
+            callees_typed,
             caller_cons,
-            pairs,
             mut_methods,
         );
-        if !callee_set.is_empty() {
+        if !callees.is_empty() {
             self.uigs.push(uig);
         } else {
             self.single.push(uig);

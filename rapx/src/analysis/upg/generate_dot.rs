@@ -9,6 +9,7 @@ use rustc_middle::ty::TyCtxt;
 use std::{
     collections::HashSet,
     fmt::{self, Write},
+    hash::Hash,
 };
 
 // def_id, is_unsafe_function(true, false), function type(0-constructor, 1-method, 2-function)
@@ -53,41 +54,41 @@ impl fmt::Display for UPGEdge {
 #[derive(Debug, Clone)]
 pub struct UPGUnit {
     pub caller: NodeType,
+    pub callees: HashSet<NodeType>,
     pub caller_cons: Vec<NodeType>,
-    pub callee_cons_pair: HashSet<(NodeType, Vec<NodeType>)>,
     pub mut_methods: Vec<DefId>,
 }
 
 impl UPGUnit {
-    pub fn new(caller: NodeType, caller_cons: Vec<NodeType>) -> Self {
+    pub fn new(caller: NodeType, callees: HashSet<NodeType>, caller_cons: Vec<NodeType>) -> Self {
         Self {
             caller,
+            callees,
             caller_cons,
-            callee_cons_pair: HashSet::default(),
             mut_methods: Vec::new(),
         }
     }
 
     pub fn new_by_pair(
         caller: NodeType,
+        callees: HashSet<NodeType>,
         caller_cons: Vec<NodeType>,
-        callee_cons_pair: HashSet<(NodeType, Vec<NodeType>)>,
         mut_methods: Vec<DefId>,
     ) -> Self {
         Self {
             caller,
+            callees,
             caller_cons,
-            callee_cons_pair,
             mut_methods,
         }
     }
 
     pub fn count_basic_units(&self, data: &mut [u32]) {
-        if self.caller.1 && self.callee_cons_pair.is_empty() {
+        if self.caller.1 && self.callees.is_empty() {
             data[0] += 1;
         }
         if !self.caller.1 && self.caller.2 != 1 {
-            for (callee, _) in &self.callee_cons_pair {
+            for callee in &self.callees {
                 if callee.2 == 1 {
                     data[2] += 1;
                 } else {
@@ -96,7 +97,7 @@ impl UPGUnit {
             }
         }
         if self.caller.1 && self.caller.2 != 1 {
-            for (callee, _) in &self.callee_cons_pair {
+            for callee in &self.callees {
                 if callee.2 == 1 {
                     data[4] += 1;
                 } else {
@@ -117,7 +118,7 @@ impl UPGUnit {
             if unsafe_cons == 0 && safe_cons == 0 {
                 safe_cons = 1;
             }
-            for (callee, _) in &self.callee_cons_pair {
+            for callee in &self.callees {
                 if callee.2 == 1 {
                     data[7] += safe_cons;
                     data[8] += unsafe_cons;
@@ -140,7 +141,7 @@ impl UPGUnit {
             if unsafe_cons == 0 && safe_cons == 0 {
                 safe_cons = 1;
             }
-            for (callee, _) in &self.callee_cons_pair {
+            for callee in &self.callees {
                 if callee.2 == 1 {
                     data[11] += safe_cons;
                     data[12] += unsafe_cons;
@@ -224,6 +225,7 @@ impl UPGUnit {
             graph.add_edge(mut_methods_node, caller_node, UPGEdge::MutToCaller);
         }
 
+        /*
         for (callee, cons) in &self.callee_cons_pair {
             let callee_node = graph.add_node(Self::get_node_ty(*callee));
             for callee_cons in cons {
@@ -232,7 +234,7 @@ impl UPGUnit {
             }
             graph.add_edge(caller_node, callee_node, UPGEdge::CallerToCallee);
         }
-
+        */
         let mut dot_str = String::new();
         let dot = Dot::with_attr_getters(
             &graph,
@@ -252,10 +254,6 @@ impl UPGUnit {
         let caller_label: Vec<_> = caller_sp.clone().into_iter().collect();
 
         let mut combined_callee_sp = HashSet::new();
-        for (callee, _sp_vec) in &self.callee_cons_pair {
-            let callee_sp = get_sp(tcx, callee.0);
-            combined_callee_sp.extend(callee_sp); // Merge sp of each callee
-        }
         let combined_labels: Vec<_> = combined_callee_sp.clone().into_iter().collect();
         println!(
             "Caller: {:?}.\n--Caller's constructors: {:?}.\n--SP labels: {:?}.",
@@ -267,11 +265,15 @@ impl UPGUnit {
                 .collect::<Vec<_>>(),
             caller_label
         );
+        for callee in &self.callees {
+            let callee_sp = get_sp(tcx, callee.0);
+            combined_callee_sp.extend(callee_sp); // Merge sp of each callee
+        }
         println!(
             "Callee: {:?}.\n--Combined Callee Labels: {:?}",
-            self.callee_cons_pair
+            self.callees
                 .iter()
-                .map(|(node_type, _)| get_cleaned_def_path_name(tcx, node_type.0))
+                .map(|(def_id, _, _)| get_cleaned_def_path_name(tcx, *def_id))
                 .collect::<Vec<_>>(),
             combined_labels
         );

@@ -69,14 +69,9 @@ impl<'tcx> UPGAnalysis<'tcx> {
             }
 
             // Edge representing a call from caller to callee.
-            for (callee, callee_cons_vec) in &unit.callee_cons_pair {
+            for callee in &unit.callees {
                 module_data.add_node(self.tcx, *callee, None);
                 module_data.add_edge(unit.caller.0, callee.0, UPGEdge::CallerToCallee);
-
-                for callee_cons in callee_cons_vec {
-                    module_data.add_node(self.tcx, *callee_cons, None);
-                    module_data.add_edge(callee_cons.0, callee.0, UPGEdge::ConsToMethod);
-                }
             }
         };
 
