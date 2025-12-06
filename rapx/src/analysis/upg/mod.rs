@@ -2,18 +2,18 @@
  * This module generates the unsafety propagation graph for each Rust module in the target crate.
  */
 pub mod fn_collector;
-pub mod upg_unit;
 pub mod hir_visitor;
 pub mod render_module_dot;
 pub mod std_upg;
+pub mod upg_unit;
 
 use crate::analysis::utils::{draw_dot::render_dot_graphs, fn_info::*};
 use fn_collector::FnCollector;
-use upg_unit::UPGUnit;
 use hir_visitor::ContainsUnsafe;
-use rustc_hir::def_id::DefId;
+use rustc_hir::{Safety, def_id::DefId};
 use rustc_middle::ty::TyCtxt;
 use std::collections::HashSet;
+use upg_unit::UPGUnit;
 
 #[derive(PartialEq)]
 pub enum TargetCrate {
@@ -71,7 +71,7 @@ impl<'tcx> UPGAnalysis<'tcx> {
         let mut dot_strs = Vec::new();
         for upg in &self.upgs {
             let dot_str = upg.generate_dot_str();
-            let caller_name = get_cleaned_def_path_name(self.tcx, upg.caller.0);
+            let caller_name = get_cleaned_def_path_name(self.tcx, upg.caller.def_id);
             dot_strs.push((caller_name, dot_str));
         }
         render_dot_graphs(dot_strs);
@@ -87,7 +87,7 @@ impl<'tcx> UPGAnalysis<'tcx> {
         for con in &caller_cons {
             cons_typed.insert(append_fn_with_types(self.tcx, *con));
         }
-        if !check_safety(self.tcx, caller) && callees.is_empty() {
+        if check_safety(self.tcx, caller) == Safety::Safe && callees.is_empty() {
             return;
         }
         let mut_methods_set = get_all_mutable_methods(self.tcx, caller);

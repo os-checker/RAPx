@@ -5,14 +5,10 @@ use std::{
 
 use super::{
     UPGAnalysis,
-    upg_unit::{NodeType, UPGEdge, UPGNode, UPGUnit},
+    upg_unit::{UPGEdge, UPGNode, UPGUnit},
 };
-use crate::analysis::utils::{
-    draw_dot::render_dot_graphs,
-    fn_info::{check_safety, get_type},
-    types::FnKind,
-};
-use rustc_hir::def_id::DefId;
+use crate::analysis::utils::{draw_dot::render_dot_graphs, fn_info::*};
+use rustc_hir::{Safety, def_id::DefId};
 use rustc_middle::ty::TyCtxt;
 
 impl<'tcx> UPGAnalysis<'tcx> {
@@ -21,7 +17,7 @@ impl<'tcx> UPGAnalysis<'tcx> {
         let mut modules_data: HashMap<String, ModuleGraphData> = HashMap::new();
 
         let mut collect_unit = |unit: &UPGUnit| {
-            let caller_id = unit.caller.0;
+            let caller_id = unit.caller.def_id;
             let module_name = self.get_module_name(caller_id);
 
             let module_data = modules_data
@@ -34,20 +30,20 @@ impl<'tcx> UPGAnalysis<'tcx> {
                 crate::analysis::utils::fn_info::get_adt_access_info(self.tcx, caller_id)
             {
                 if is_all_pub {
-                    let adt_node_type = (adt_def_id, false, FnKind::Constructor);
+                    let adt_node_type = FnInfo::new(adt_def_id, Safety::Safe, FnKind::Constructor);
                     let label = format!("Literal Constructor: {}", self.tcx.item_name(adt_def_id));
                     module_data.add_node(self.tcx, adt_node_type, Some(label));
-                    if unit.caller.2 == FnKind::Method {
+                    if unit.caller.fn_kind == FnKind::Method {
                         module_data.add_edge(adt_def_id, caller_id, UPGEdge::ConsToMethod);
                     }
                 } else {
-                    let adt_node_type = (adt_def_id, false, FnKind::Method);
+                    let adt_node_type = FnInfo::new(adt_def_id, Safety::Safe, FnKind::Method);
                     let label = format!(
                         "MutMethod Introduced by PubFields: {}",
                         self.tcx.item_name(adt_def_id)
                     );
                     module_data.add_node(self.tcx, adt_node_type, Some(label));
-                    if unit.caller.2 == FnKind::Method {
+                    if unit.caller.fn_kind == FnKind::Method {
                         module_data.add_edge(adt_def_id, caller_id, UPGEdge::MutToCaller);
                     }
                 }
@@ -56,23 +52,23 @@ impl<'tcx> UPGAnalysis<'tcx> {
             // Edge from associated item (constructor) to the method.
             for cons in &unit.caller_cons {
                 module_data.add_node(self.tcx, *cons, None);
-                module_data.add_edge(cons.0, unit.caller.0, UPGEdge::ConsToMethod);
+                module_data.add_edge(cons.def_id, unit.caller.def_id, UPGEdge::ConsToMethod);
             }
 
             // Edge from mutable access to the caller.
             for mut_method_id in &unit.mut_methods {
                 let node_type = get_type(self.tcx, *mut_method_id);
-                let is_unsafe = check_safety(self.tcx, *mut_method_id);
-                let node = (*mut_method_id, is_unsafe, node_type);
+                let fn_safety = check_safety(self.tcx, *mut_method_id);
+                let node = FnInfo::new(*mut_method_id, fn_safety, node_type);
 
                 module_data.add_node(self.tcx, node, None);
-                module_data.add_edge(*mut_method_id, unit.caller.0, UPGEdge::MutToCaller);
+                module_data.add_edge(*mut_method_id, unit.caller.def_id, UPGEdge::MutToCaller);
             }
 
             // Edge representing a call from caller to callee.
             for callee in &unit.callees {
                 module_data.add_node(self.tcx, *callee, None);
-                module_data.add_edge(unit.caller.0, callee.0, UPGEdge::CallerToCallee);
+                module_data.add_edge(unit.caller.def_id, callee.def_id, UPGEdge::CallerToCallee);
             }
         };
 
@@ -109,7 +105,7 @@ impl<'tcx> UPGAnalysis<'tcx> {
 /// Holds graph data for a single module before DOT generation.
 struct ModuleGraphData {
     // Nodes grouped by their associated struct/type name.
-    struct_clusters: HashMap<String, HashSet<NodeType>>,
+    struct_clusters: HashMap<String, HashSet<FnInfo>>,
     // Edges between DefIds with their type.
     edges: HashSet<(DefId, DefId, UPGEdge)>,
     // Pre-generated DOT attribute strings for each node (DefId).
@@ -125,17 +121,16 @@ impl ModuleGraphData {
         }
     }
 
-    fn add_node(&mut self, tcx: TyCtxt<'_>, node: NodeType, custom_label: Option<String>) {
-        let (def_id, _, node_type) = node;
-        let struct_name = self.get_struct_group_name(tcx, def_id);
+    fn add_node(&mut self, tcx: TyCtxt<'_>, node: FnInfo, custom_label: Option<String>) {
+        let struct_name = self.get_struct_group_name(tcx, node.def_id);
         self.struct_clusters
             .entry(struct_name)
             .or_default()
             .insert(node);
 
-        if !self.node_styles.contains_key(&def_id) || custom_label.is_some() {
+        if !self.node_styles.contains_key(&node.def_id) || custom_label.is_some() {
             let attr = if let Some(label) = custom_label {
-                if node_type == FnKind::Constructor {
+                if node.fn_kind == FnKind::Constructor {
                     format!(
                         "label=\"{}\", shape=\"septagon\", style=\"filled\", fillcolor=\"#f0f0f0\", color=\"#555555\"",
                         label
@@ -151,7 +146,7 @@ impl ModuleGraphData {
                 self.node_to_dot_attr(tcx, &upg_node)
             };
 
-            self.node_styles.insert(def_id, attr);
+            self.node_styles.insert(node.def_id, attr);
         }
     }
 
@@ -226,7 +221,7 @@ impl ModuleGraphData {
             writeln!(dot, "        color=gray;").unwrap();
 
             for node in nodes {
-                let def_id = node.0;
+                let def_id = node.def_id;
                 let node_id =
                     format!("n_{:?}", def_id).replace(|c: char| !c.is_alphanumeric(), "_");
 

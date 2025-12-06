@@ -1,19 +1,16 @@
-use crate::analysis::utils::{fn_info::*, types::FnKind};
+use crate::analysis::utils::fn_info::*;
 use petgraph::{
     Graph,
     dot::{Config, Dot},
     graph::{DiGraph, EdgeReference, NodeIndex},
 };
-use rustc_hir::def_id::DefId;
+use rustc_hir::{Safety, def_id::DefId};
 use rustc_middle::ty::TyCtxt;
 use std::{
     collections::HashSet,
     fmt::{self, Write},
     hash::Hash,
 };
-
-// def_id, is_unsafe_function(true, false), function type(0-constructor, 1-method, 2-function)
-pub type NodeType = (DefId, bool, FnKind);
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum UPGNode {
@@ -53,17 +50,17 @@ impl fmt::Display for UPGEdge {
 
 #[derive(Debug, Clone)]
 pub struct UPGUnit {
-    pub caller: NodeType,
-    pub callees: HashSet<NodeType>,
-    pub caller_cons: HashSet<NodeType>,
+    pub caller: FnInfo,
+    pub callees: HashSet<FnInfo>,
+    pub caller_cons: HashSet<FnInfo>,
     pub mut_methods: Vec<DefId>,
 }
 
 impl UPGUnit {
     pub fn new(
-        caller: NodeType,
-        callees: HashSet<NodeType>,
-        caller_cons: HashSet<NodeType>,
+        caller: FnInfo,
+        callees: HashSet<FnInfo>,
+        caller_cons: HashSet<FnInfo>,
         mut_methods: Vec<DefId>,
     ) -> Self {
         Self {
@@ -75,32 +72,32 @@ impl UPGUnit {
     }
 
     pub fn count_basic_units(&self, data: &mut [u32]) {
-        if self.caller.1 && self.callees.is_empty() {
+        if self.caller.fn_safety == Safety::Unsafe && self.callees.is_empty() {
             data[0] += 1;
         }
-        if !self.caller.1 && self.caller.2 != FnKind::Method {
+        if self.caller.fn_safety == Safety::Safe && self.caller.fn_kind != FnKind::Method {
             for callee in &self.callees {
-                if callee.2 == FnKind::Method {
+                if callee.fn_kind == FnKind::Method {
                     data[2] += 1;
                 } else {
                     data[1] += 1;
                 }
             }
         }
-        if self.caller.1 && self.caller.2 != FnKind::Method {
+        if self.caller.fn_safety == Safety::Unsafe && self.caller.fn_kind != FnKind::Method {
             for callee in &self.callees {
-                if callee.2 == FnKind::Method {
+                if callee.fn_kind == FnKind::Method {
                     data[4] += 1;
                 } else {
                     data[3] += 1;
                 }
             }
         }
-        if self.caller.1 && self.caller.2 == FnKind::Method {
+        if self.caller.fn_safety == Safety::Unsafe && self.caller.fn_kind == FnKind::Method {
             let mut unsafe_cons = 0;
             let mut safe_cons = 0;
             for cons in &self.caller_cons {
-                if cons.1 {
+                if cons.fn_safety == Safety::Unsafe {
                     unsafe_cons += 1;
                 } else {
                     safe_cons += 1;
@@ -110,7 +107,7 @@ impl UPGUnit {
                 safe_cons = 1;
             }
             for callee in &self.callees {
-                if callee.2 == FnKind::Method {
+                if callee.fn_kind == FnKind::Method {
                     data[7] += safe_cons;
                     data[8] += unsafe_cons;
                 } else {
@@ -119,11 +116,11 @@ impl UPGUnit {
                 }
             }
         }
-        if !self.caller.1 && self.caller.2 == FnKind::Method {
+        if self.caller.fn_safety == Safety::Safe && self.caller.fn_kind == FnKind::Method {
             let mut unsafe_cons = 0;
             let mut safe_cons = 0;
             for cons in &self.caller_cons {
-                if cons.1 {
+                if cons.fn_safety == Safety::Unsafe {
                     unsafe_cons += 1;
                 } else {
                     safe_cons += 1;
@@ -133,7 +130,7 @@ impl UPGUnit {
                 safe_cons = 1;
             }
             for callee in &self.callees {
-                if callee.2 == FnKind::Method {
+                if callee.fn_kind == FnKind::Method {
                     data[11] += safe_cons;
                     data[12] += unsafe_cons;
                 } else {
@@ -145,14 +142,20 @@ impl UPGUnit {
     }
 
     /// (node.0, node.1, node.2) : (def_id, is_unsafe, type_of_func--0:cons,1:method,2:function)
-    pub fn get_node_ty(node: NodeType) -> UPGNode {
-        match (node.1, node.2) {
-            (true, FnKind::Constructor) => UPGNode::UnsafeFn(node.0, "septagon".to_string()),
-            (true, FnKind::Method) => UPGNode::UnsafeFn(node.0, "ellipse".to_string()),
-            (true, FnKind::Fn) => UPGNode::UnsafeFn(node.0, "box".to_string()),
-            (false, FnKind::Constructor) => UPGNode::SafeFn(node.0, "septagon".to_string()),
-            (false, FnKind::Method) => UPGNode::SafeFn(node.0, "ellipse".to_string()),
-            (false, FnKind::Fn) => UPGNode::SafeFn(node.0, "box".to_string()),
+    pub fn get_node_ty(node: FnInfo) -> UPGNode {
+        match (node.fn_safety, node.fn_kind) {
+            (Safety::Unsafe, FnKind::Constructor) => {
+                UPGNode::UnsafeFn(node.def_id, "septagon".to_string())
+            }
+            (Safety::Unsafe, FnKind::Method) => {
+                UPGNode::UnsafeFn(node.def_id, "ellipse".to_string())
+            }
+            (Safety::Unsafe, FnKind::Fn) => UPGNode::UnsafeFn(node.def_id, "box".to_string()),
+            (Safety::Safe, FnKind::Constructor) => {
+                UPGNode::SafeFn(node.def_id, "septagon".to_string())
+            }
+            (Safety::Safe, FnKind::Method) => UPGNode::SafeFn(node.def_id, "ellipse".to_string()),
+            (Safety::Safe, FnKind::Fn) => UPGNode::SafeFn(node.def_id, "box".to_string()),
         }
     }
 
@@ -196,7 +199,7 @@ impl UPGUnit {
             let cons_labels: Vec<String> = self
                 .caller_cons
                 .iter()
-                .map(|(def_id, _, _)| format!("{:?}", def_id))
+                .map(|con| format!("{:?}", con.def_id))
                 .collect();
             let merged_label = format!("Caller Constructors\n{}", cons_labels.join("\n"));
             let merged_cons_node = graph.add_node(UPGNode::MergedCallerCons(merged_label));
@@ -240,30 +243,30 @@ impl UPGUnit {
     }
 
     pub fn print_self(&self, tcx: TyCtxt<'_>) {
-        let caller_sp = get_sp(tcx, self.caller.0);
+        let caller_sp = get_sp(tcx, self.caller.def_id);
         let caller_label: Vec<_> = caller_sp.clone().into_iter().collect();
 
         let mut combined_callee_sp = HashSet::new();
         let combined_labels: Vec<_> = combined_callee_sp.clone().into_iter().collect();
         println!(
             "Caller: {:?}.\n--Caller's constructors: {:?}.\n--SP labels: {:?}.",
-            get_cleaned_def_path_name(tcx, self.caller.0),
+            get_cleaned_def_path_name(tcx, self.caller.def_id),
             self.caller_cons
                 .iter()
-                .filter(|cons| cons.1)
-                .map(|node_type| get_cleaned_def_path_name(tcx, node_type.0))
+                .filter(|cons| cons.fn_safety == Safety::Unsafe)
+                .map(|node_type| get_cleaned_def_path_name(tcx, node_type.def_id))
                 .collect::<Vec<_>>(),
             caller_label
         );
         for callee in &self.callees {
-            let callee_sp = get_sp(tcx, callee.0);
+            let callee_sp = get_sp(tcx, callee.def_id);
             combined_callee_sp.extend(callee_sp); // Merge sp of each callee
         }
         println!(
             "Callee: {:?}.\n--Combined Callee Labels: {:?}",
             self.callees
                 .iter()
-                .map(|(def_id, _, _)| get_cleaned_def_path_name(tcx, *def_id))
+                .map(|callee| get_cleaned_def_path_name(tcx, callee.def_id))
                 .collect::<Vec<_>>(),
             combined_labels
         );

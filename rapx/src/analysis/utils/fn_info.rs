@@ -1,4 +1,4 @@
-use super::{draw_dot::render_dot_string, types::FnKind};
+use super::draw_dot::render_dot_string;
 use crate::analysis::{
     core::dataflow::{DataFlowAnalysis, default::DataFlowAnalyzer},
     senryx::{
@@ -8,7 +8,7 @@ use crate::analysis::{
 };
 use crate::{rap_debug, rap_warn};
 use rustc_data_structures::fx::FxHashMap;
-use rustc_hir::{Attribute, ImplItemKind, def::DefKind, def_id::DefId};
+use rustc_hir::{Attribute, ImplItemKind, Safety, def::DefKind, def_id::DefId};
 use rustc_middle::{
     mir::{BasicBlock, BinOp, Local, Operand, Terminator, TerminatorKind},
     ty,
@@ -21,6 +21,30 @@ use std::{
     hash::Hash,
 };
 use syn::Expr;
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub enum FnKind {
+    Fn,
+    Method,
+    Constructor,
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub struct FnInfo {
+    pub def_id: DefId,
+    pub fn_safety: Safety,
+    pub fn_kind: FnKind,
+}
+
+impl FnInfo {
+    pub fn new(def_id: DefId, fn_safety: Safety, fn_kind: FnKind) -> Self {
+        FnInfo {
+            def_id,
+            fn_safety,
+            fn_kind,
+        }
+    }
+}
 
 pub fn check_visibility(tcx: TyCtxt, func_defid: DefId) -> bool {
     if !tcx.visibility(func_defid).is_public() {
@@ -151,10 +175,10 @@ pub fn get_struct_name(tcx: TyCtxt<'_>, def_id: DefId) -> Option<String> {
     None
 }
 
-pub fn check_safety(tcx: TyCtxt<'_>, def_id: DefId) -> bool {
+pub fn check_safety(tcx: TyCtxt<'_>, def_id: DefId) -> Safety {
     let poly_fn_sig = tcx.fn_sig(def_id);
     let fn_sig = poly_fn_sig.skip_binder();
-    fn_sig.safety() == rustc_hir::Safety::Unsafe
+    fn_sig.safety()
 }
 
 pub fn get_type(tcx: TyCtxt<'_>, def_id: DefId) -> FnKind {
@@ -262,7 +286,7 @@ pub fn get_callees(tcx: TyCtxt<'_>, def_id: DefId) -> HashSet<DefId> {
             if let TerminatorKind::Call { func, .. } = &bb.terminator().kind {
                 if let Operand::Constant(func_constant) = func {
                     if let ty::FnDef(callee_def_id, _) = func_constant.const_.ty().kind() {
-                        if check_safety(tcx, *callee_def_id) {
+                        if check_safety(tcx, *callee_def_id) == Safety::Unsafe {
                             callees.insert(*callee_def_id);
                         }
                     }
@@ -1055,7 +1079,7 @@ fn extract_unsafe_callee(tcx: TyCtxt<'_>, terminator: &Terminator<'_>) -> Option
     if let TerminatorKind::Call { func, .. } = &terminator.kind {
         if let Operand::Constant(func_constant) = func {
             if let ty::FnDef(callee_def_id, _) = func_constant.const_.ty().kind() {
-                if check_safety(tcx, *callee_def_id) {
+                if check_safety(tcx, *callee_def_id) == Safety::Unsafe {
                     let func_name = get_cleaned_def_path_name(tcx, *callee_def_id);
                     return Some((*callee_def_id, func_name));
                 }
@@ -1292,8 +1316,8 @@ pub fn get_cons(tcx: TyCtxt<'_>, def_id: DefId) -> Vec<DefId> {
     cons
 }
 
-pub fn append_fn_with_types(tcx: TyCtxt, def_id: DefId) -> (DefId, bool, FnKind) {
-    (def_id, check_safety(tcx, def_id), get_type(tcx, def_id))
+pub fn append_fn_with_types(tcx: TyCtxt, def_id: DefId) -> FnInfo {
+    FnInfo::new(def_id, check_safety(tcx, def_id), get_type(tcx, def_id))
 }
 pub fn search_constructor(tcx: TyCtxt, def_id: DefId) -> Vec<DefId> {
     let mut constructors = Vec::new();

@@ -13,7 +13,7 @@ pub mod visitor_check;
 use dominated_graph::InterResultNode;
 use inter_record::InterAnalysisRecord;
 use rustc_data_structures::fx::FxHashMap;
-use rustc_hir::def_id::DefId;
+use rustc_hir::{Safety, def_id::DefId};
 use rustc_middle::{
     mir::{BasicBlock, Operand, TerminatorKind},
     ty::{self, TyCtxt},
@@ -26,7 +26,7 @@ use crate::{
         Analysis,
         core::alias_analysis::{AAResult, AliasAnalysis, default::AliasAnalyzer},
         upg::{fn_collector::FnCollector, hir_visitor::ContainsUnsafe},
-        utils::{fn_info::*, types::FnKind},
+        utils::fn_info::*,
     },
     rap_info, rap_warn,
 };
@@ -118,8 +118,9 @@ impl<'tcx> SenryxCheck<'tcx> {
                         return true;
                     }
                     if chain.len() == 1 {
-                        let is_unsafe = check_safety(self.tcx, def_id);
-                        return is_unsafe;
+                        if check_safety(self.tcx, def_id) == Safety::Unsafe {
+                            return true;
+                        }
                     }
                     false
                 })
@@ -228,7 +229,7 @@ impl<'tcx> SenryxCheck<'tcx> {
         if func_type == FnKind::Method && !self.get_annotation(def_id).is_empty() {
             let func_cons = search_constructor(self.tcx, def_id);
             for func_con in func_cons {
-                if check_safety(self.tcx, func_con) {
+                if check_safety(self.tcx, func_con) == Safety::Unsafe {
                     Self::show_annotate_results(self.tcx, func_con, self.get_annotation(def_id));
                     // uphold safety to unsafe constructor
                 }

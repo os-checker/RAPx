@@ -1,6 +1,6 @@
 use super::UPGAnalysis;
-use crate::analysis::utils::{fn_info::*, show_mir::display_mir, types::FnKind};
-use rustc_hir::{def::DefKind, def_id::DefId};
+use crate::analysis::utils::{fn_info::*, show_mir::display_mir};
+use rustc_hir::{Safety, def::DefKind, def_id::DefId};
 use rustc_middle::{
     mir::Local,
     ty,
@@ -48,8 +48,9 @@ impl<'tcx> UPGAnalysis<'tcx> {
                         return true;
                     }
                     if chain.len() == 1 {
-                        let is_unsafe = check_safety(self.tcx, def_id);
-                        return is_unsafe;
+                        if check_safety(self.tcx, def_id) == Safety::Unsafe {
+                            return true;
+                        }
                     }
                     false
                 })
@@ -71,7 +72,7 @@ impl<'tcx> UPGAnalysis<'tcx> {
         let all_std_fn_def = get_all_std_fns_by_rustc_public(self.tcx);
 
         for def_id in &all_std_fn_def {
-            if check_safety(tcx, *def_id) {
+            if check_safety(tcx, *def_id) == Safety::Unsafe {
                 let sp_set = get_sp(tcx, *def_id);
                 if !sp_set.is_empty() {
                     unsafe_fn.insert(*def_id);
@@ -130,14 +131,14 @@ impl<'tcx> UPGAnalysis<'tcx> {
         let mut method_unsafe_caller = Vec::new();
         let mut method_safe_caller = Vec::new();
         for upg in &self.upgs {
-            if upg.caller.2 == FnKind::Method {
+            if upg.caller.fn_kind == FnKind::Method {
                 // method
                 if upg.callees.is_empty() {
                     method_no_callee.push(upg.clone());
                 }
-                if upg.caller.1 {
+                if upg.caller.fn_safety == Safety::Unsafe {
                     method_unsafe_caller.push(upg.clone());
-                } else if !upg.caller.1 {
+                } else {
                     method_safe_caller.push(upg.clone());
                 }
             } else {
@@ -145,9 +146,9 @@ impl<'tcx> UPGAnalysis<'tcx> {
                 if upg.callees.is_empty() {
                     fn_no_callee.push(upg.clone());
                 }
-                if upg.caller.1 {
+                if upg.caller.fn_safety == Safety::Unsafe {
                     fn_unsafe_caller.push(upg.clone());
-                } else if !upg.caller.1 {
+                } else {
                     fn_safe_caller.push(upg.clone());
                 }
             }
@@ -173,7 +174,7 @@ impl<'tcx> UPGAnalysis<'tcx> {
         let mut vi = 0;
         for upg in &self.upgs {
             self.get_struct(
-                upg.caller.0,
+                upg.caller.def_id,
                 &mut cache,
                 &mut s,
                 &mut u,
@@ -235,24 +236,24 @@ impl<'tcx> UPGAnalysis<'tcx> {
                                     vi_flag = true;
                                 }
                                 if get_type(self.tcx, item_def_id) == FnKind::Constructor
-                                    && check_safety(self.tcx, item_def_id)
+                                    && check_safety(self.tcx, item_def_id) == Safety::Unsafe
                                 // && get_sp(self.tcx, item_def_id).len() > 0
                                 {
                                     unsafe_constructors.push(item_def_id);
                                 }
                                 if get_type(self.tcx, item_def_id) == FnKind::Constructor
-                                    && !check_safety(self.tcx, item_def_id)
+                                    && check_safety(self.tcx, item_def_id) == Safety::Safe
                                 {
                                     safe_constructors.push(item_def_id);
                                 }
                                 if get_type(self.tcx, item_def_id) == FnKind::Method
-                                    && check_safety(self.tcx, item_def_id)
+                                    && check_safety(self.tcx, item_def_id) == Safety::Unsafe
                                 // && get_sp(self.tcx, item_def_id).len() > 0
                                 {
                                     unsafe_methods.push(item_def_id);
                                 }
                                 if get_type(self.tcx, item_def_id) == FnKind::Method
-                                    && !check_safety(self.tcx, item_def_id)
+                                    && check_safety(self.tcx, item_def_id) == Safety::Safe
                                 {
                                     if !get_callees(tcx, item_def_id).is_empty() {
                                         safe_methods.push(item_def_id);
@@ -341,7 +342,9 @@ impl<'tcx> UPGAnalysis<'tcx> {
         }
         match tcx.def_kind(def_id) {
             DefKind::Fn | DefKind::AssocFn => {
-                if check_safety(tcx, def_id) && self.tcx.visibility(def_id) == Visibility::Public {
+                if check_safety(tcx, def_id) == Safety::Unsafe
+                    && self.tcx.visibility(def_id) == Visibility::Public
+                {
                     unsafe_fn.insert(def_id);
                     self.insert_upg(def_id, get_callees(tcx, def_id), get_cons(tcx, def_id));
                 }
