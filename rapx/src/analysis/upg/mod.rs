@@ -12,12 +12,8 @@ use fn_collector::FnCollector;
 use generate_dot::UPGUnit;
 use hir_visitor::ContainsUnsafe;
 use rustc_hir::def_id::DefId;
-use rustc_middle::{
-    ty,
-    ty::TyCtxt,
-};
+use rustc_middle::ty::TyCtxt;
 use std::collections::HashSet;
-use super::utils::types::FnType;
 
 #[derive(PartialEq)]
 pub enum TargetCrate {
@@ -27,7 +23,6 @@ pub enum TargetCrate {
 
 pub struct UPGAnalysis<'tcx> {
     pub tcx: TyCtxt<'tcx>,
-    pub related_func_def_id: Vec<DefId>,
     pub upgs: Vec<UPGUnit>,
 }
 
@@ -35,7 +30,6 @@ impl<'tcx> UPGAnalysis<'tcx> {
     pub fn new(tcx: TyCtxt<'tcx>) -> Self {
         Self {
             tcx,
-            related_func_def_id: Vec::new(),
             upgs: Vec::new(),
         }
     }
@@ -81,41 +75,6 @@ impl<'tcx> UPGAnalysis<'tcx> {
             dot_strs.push((caller_name, dot_str));
         }
         render_dot_graphs(dot_strs);
-    }
-
-    pub fn search_constructor(&mut self, def_id: DefId) -> Vec<DefId> {
-        let tcx = self.tcx;
-        let mut constructors = Vec::new();
-        if let Some(assoc_item) = tcx.opt_associated_item(def_id) {
-            if let Some(impl_id) = assoc_item.impl_container(tcx) {
-                // get struct ty
-                let ty = tcx.type_of(impl_id).skip_binder();
-                if let Some(adt_def) = ty.ty_adt_def() {
-                    let adt_def_id = adt_def.did();
-                    let impl_vec = get_impls_for_struct(self.tcx, adt_def_id);
-                    for impl_id in impl_vec {
-                        let associated_items = tcx.associated_items(impl_id);
-                        for item in associated_items.in_definition_order() {
-                            if let ty::AssocKind::Fn {
-                                name: _,
-                                has_self: _,
-                            } = item.kind
-                            {
-                                let item_def_id = item.def_id;
-                                if get_type(self.tcx, item_def_id) == FnType::Constructor {
-                                    constructors.push(item_def_id);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        constructors
-    }
-
-    pub fn is_crate_api_node(&self, body_did: DefId) -> bool {
-        self.related_func_def_id.contains(&body_did)
     }
 
     pub fn insert_upg(&mut self, caller: DefId, callees: HashSet<DefId>, caller_cons: Vec<DefId>) {

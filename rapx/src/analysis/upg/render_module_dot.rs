@@ -9,7 +9,8 @@ use super::{
 };
 use crate::analysis::utils::{
     draw_dot::render_dot_graphs,
-    fn_info::{check_safety, get_type}, types::FnType,
+    fn_info::{check_safety, get_type},
+    types::FnType,
 };
 use rustc_hir::def_id::DefId;
 use rustc_middle::ty::TyCtxt;

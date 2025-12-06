@@ -1281,7 +1281,7 @@ pub fn get_cons(tcx: TyCtxt<'_>, def_id: DefId) -> Vec<DefId> {
                     for item in tcx.associated_item_def_ids(impl_def_id) {
                         if (tcx.def_kind(item) == DefKind::Fn
                             || tcx.def_kind(item) == DefKind::AssocFn)
-                            && get_type(tcx, *item) == FnType::Constructor 
+                            && get_type(tcx, *item) == FnType::Constructor
                         {
                             cons.push(*item);
                         }
@@ -1295,4 +1295,33 @@ pub fn get_cons(tcx: TyCtxt<'_>, def_id: DefId) -> Vec<DefId> {
 
 pub fn append_fn_with_types(tcx: TyCtxt, def_id: DefId) -> (DefId, bool, FnType) {
     (def_id, check_safety(tcx, def_id), get_type(tcx, def_id))
+}
+pub fn search_constructor(tcx: TyCtxt, def_id: DefId) -> Vec<DefId> {
+    let mut constructors = Vec::new();
+    if let Some(assoc_item) = tcx.opt_associated_item(def_id) {
+        if let Some(impl_id) = assoc_item.impl_container(tcx) {
+            // get struct ty
+            let ty = tcx.type_of(impl_id).skip_binder();
+            if let Some(adt_def) = ty.ty_adt_def() {
+                let adt_def_id = adt_def.did();
+                let impl_vec = get_impls_for_struct(tcx, adt_def_id);
+                for impl_id in impl_vec {
+                    let associated_items = tcx.associated_items(impl_id);
+                    for item in associated_items.in_definition_order() {
+                        if let ty::AssocKind::Fn {
+                            name: _,
+                            has_self: _,
+                        } = item.kind
+                        {
+                            let item_def_id = item.def_id;
+                            if get_type(tcx, item_def_id) == FnType::Constructor {
+                                constructors.push(item_def_id);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    constructors
 }

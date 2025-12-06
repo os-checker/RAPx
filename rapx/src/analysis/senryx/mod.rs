@@ -25,7 +25,7 @@ use crate::{
     analysis::{
         Analysis,
         core::alias_analysis::{AAResult, AliasAnalysis, default::AliasAnalyzer},
-        upg::{UPGAnalysis, fn_collector::FnCollector, hir_visitor::ContainsUnsafe},
+        upg::{fn_collector::FnCollector, hir_visitor::ContainsUnsafe},
         utils::{fn_info::*, types::FnType},
     },
     rap_info, rap_warn,
@@ -224,10 +224,9 @@ impl<'tcx> SenryxCheck<'tcx> {
     }
 
     pub fn body_visit_and_check_uig(&self, def_id: DefId) {
-        let mut uig_checker = UPGAnalysis::new(self.tcx);
         let func_type = get_type(self.tcx, def_id);
         if func_type == FnType::Method && !self.get_annotation(def_id).is_empty() {
-            let func_cons = uig_checker.search_constructor(def_id);
+            let func_cons = search_constructor(self.tcx, def_id);
             for func_con in func_cons {
                 if check_safety(self.tcx, func_con) {
                     Self::show_annotate_results(self.tcx, func_con, self.get_annotation(def_id));

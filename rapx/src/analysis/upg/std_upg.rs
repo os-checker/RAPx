@@ -234,7 +234,7 @@ impl<'tcx> UPGAnalysis<'tcx> {
                                 if !get_sp(self.tcx, item_def_id).is_empty() {
                                     vi_flag = true;
                                 }
-                                if get_type(self.tcx, item_def_id) == FnType::Constructor 
+                                if get_type(self.tcx, item_def_id) == FnType::Constructor
                                     && check_safety(self.tcx, item_def_id)
                                 // && get_sp(self.tcx, item_def_id).len() > 0
                                 {
