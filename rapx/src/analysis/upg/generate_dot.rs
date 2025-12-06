@@ -55,24 +55,15 @@ impl fmt::Display for UPGEdge {
 pub struct UPGUnit {
     pub caller: NodeType,
     pub callees: HashSet<NodeType>,
-    pub caller_cons: Vec<NodeType>,
+    pub caller_cons: HashSet<NodeType>,
     pub mut_methods: Vec<DefId>,
 }
 
 impl UPGUnit {
-    pub fn new(caller: NodeType, callees: HashSet<NodeType>, caller_cons: Vec<NodeType>) -> Self {
-        Self {
-            caller,
-            callees,
-            caller_cons,
-            mut_methods: Vec::new(),
-        }
-    }
-
-    pub fn new_by_pair(
+    pub fn new(
         caller: NodeType,
         callees: HashSet<NodeType>,
-        caller_cons: Vec<NodeType>,
+        caller_cons: HashSet<NodeType>,
         mut_methods: Vec<DefId>,
     ) -> Self {
         Self {

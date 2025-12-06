@@ -122,48 +122,46 @@ impl<'tcx> UPGAnalysis<'tcx> {
         }
     }
 
-    pub fn analyze_uig(&self) {
-        let mut func_nc = Vec::new();
-        let mut func_pro1 = Vec::new();
-        let mut func_enc1 = Vec::new();
-        let mut m_nc = Vec::new();
-        let mut m_pro1 = Vec::new();
-        let mut m_enc1 = Vec::new();
-        for uig in &self.uigs {
-            if uig.caller.2 == 1 {
+    pub fn analyze_upg(&self) {
+        let mut fn_no_callee = Vec::new();
+        let mut fn_unsafe_caller = Vec::new();
+        let mut fn_safe_caller = Vec::new();
+        let mut method_no_callee = Vec::new();
+        let mut method_unsafe_caller = Vec::new();
+        let mut method_safe_caller = Vec::new();
+        for upg in &self.upgs {
+            if upg.caller.2 == 1 {
                 // method
-                if uig.caller.1 {
-                    m_pro1.push(uig.clone());
-                } else if !uig.caller.1 {
-                    m_enc1.push(uig.clone());
+                if upg.callees.is_empty() {
+                    method_no_callee.push(upg.clone());
+                }
+                if upg.caller.1 {
+                    method_unsafe_caller.push(upg.clone());
+                } else if !upg.caller.1 {
+                    method_safe_caller.push(upg.clone());
                 }
             } else {
                 //function
-                if uig.caller.1 {
-                    func_pro1.push(uig.clone());
-                } else if !uig.caller.1 {
-                    func_enc1.push(uig.clone());
+                if upg.callees.is_empty() {
+                    fn_no_callee.push(upg.clone());
                 }
-            }
-        }
-        for uig in &self.single {
-            if uig.caller.2 == 1 {
-                // method
-                m_nc.push(uig.clone());
-            } else {
-                func_nc.push(uig.clone());
+                if upg.caller.1 {
+                    fn_unsafe_caller.push(upg.clone());
+                } else if !upg.caller.1 {
+                    fn_safe_caller.push(upg.clone());
+                }
             }
         }
         rap_info!(
             "func: {},{},{}, method: {},{},{}",
-            func_nc.len(),
-            func_pro1.len(),
-            func_enc1.len(),
-            m_nc.len(),
-            m_pro1.len(),
-            m_enc1.len()
+            fn_no_callee.len(),
+            fn_unsafe_caller.len(),
+            fn_safe_caller.len(),
+            method_no_callee.len(),
+            method_unsafe_caller.len(),
+            method_safe_caller.len()
         );
-        rap_info!("units: {}", self.uigs.len() + self.single.len());
+        rap_info!("units: {}", self.upgs.len());
     }
 
     pub fn analyze_struct(&self) {
@@ -173,20 +171,9 @@ impl<'tcx> UPGAnalysis<'tcx> {
         let mut e = 0;
         let mut uc = 0;
         let mut vi = 0;
-        for uig in &self.uigs {
+        for upg in &self.upgs {
             self.get_struct(
-                uig.caller.0,
-                &mut cache,
-                &mut s,
-                &mut u,
-                &mut e,
-                &mut uc,
-                &mut vi,
-            );
-        }
-        for uig in &self.single {
-            self.get_struct(
-                uig.caller.0,
+                upg.caller.0,
                 &mut cache,
                 &mut s,
                 &mut u,
@@ -337,11 +324,8 @@ impl<'tcx> UPGAnalysis<'tcx> {
                 self.insert_upg(def_id, get_callees(tcx, def_id), get_cons(tcx, def_id));
             }
         }
-        for uig in &self.uigs {
-            uig.count_basic_units(&mut basic_units_data);
-        }
-        for single in &self.single {
-            single.count_basic_units(&mut basic_units_data);
+        for upg in &self.upgs {
+            upg.count_basic_units(&mut basic_units_data);
         }
     }
 

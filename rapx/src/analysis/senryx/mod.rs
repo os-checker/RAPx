@@ -193,14 +193,14 @@ impl<'tcx> SenryxCheck<'tcx> {
         let target_name = get_cleaned_def_path_name(self.tcx, def_id);
         rap_info!("Begin verification process for: {:?}", target_name);
         if get_type(self.tcx, def_id) == 1 {
-            let func_cons = get_cons(self.tcx, def_id);
+            let cons = get_cons(self.tcx, def_id);
             let mut base_inter_result = InterResultNode::new_default(get_adt_ty(self.tcx, def_id));
-            for func_con in func_cons {
+            for con in cons {
                 let mut cons_body_visitor =
-                    BodyVisitor::new(self.tcx, func_con.0, self.global_recorder.clone(), 0);
+                    BodyVisitor::new(self.tcx, con, self.global_recorder.clone(), 0);
                 let cons_fields_result = cons_body_visitor.path_forward_check(fn_map);
                 // cache and merge fields' states
-                let cons_name = get_cleaned_def_path_name(self.tcx, func_con.0);
+                let cons_name = get_cleaned_def_path_name(self.tcx, con);
                 println!(
                     "cons {cons_name} state results {:?}",
                     cons_fields_result.clone()

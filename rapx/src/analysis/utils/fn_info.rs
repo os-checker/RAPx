@@ -1265,7 +1265,7 @@ pub fn get_all_mutable_methods(tcx: TyCtxt, src_def_id: DefId) -> HashMap<DefId,
     results
 }
 
-pub fn get_cons(tcx: TyCtxt<'_>, def_id: DefId) -> Vec<(DefId, bool, usize)> {
+pub fn get_cons(tcx: TyCtxt<'_>, def_id: DefId) -> Vec<DefId> {
     let mut cons = Vec::new();
     if tcx.def_kind(def_id) == DefKind::Fn || get_type(tcx, def_id) == 0 {
         return cons;
@@ -1283,7 +1283,7 @@ pub fn get_cons(tcx: TyCtxt<'_>, def_id: DefId) -> Vec<(DefId, bool, usize)> {
                             || tcx.def_kind(item) == DefKind::AssocFn)
                             && get_type(tcx, *item) == 0
                         {
-                            cons.push(generate_node_ty(tcx, *item));
+                            cons.push(*item);
                         }
                     }
                 }
@@ -1293,6 +1293,6 @@ pub fn get_cons(tcx: TyCtxt<'_>, def_id: DefId) -> Vec<(DefId, bool, usize)> {
     cons
 }
 
-pub fn generate_node_ty(tcx: TyCtxt, def_id: DefId) -> (DefId, bool, usize) {
+pub fn append_fn_with_types(tcx: TyCtxt, def_id: DefId) -> (DefId, bool, usize) {
     (def_id, check_safety(tcx, def_id), get_type(tcx, def_id))
 }

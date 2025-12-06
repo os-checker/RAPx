@@ -76,11 +76,8 @@ impl<'tcx> UPGAnalysis<'tcx> {
         };
 
         // Aggregate all Units
-        for uig in &self.uigs {
-            collect_unit(uig);
-        }
-        for uig in &self.single {
-            collect_unit(uig);
+        for upg in &self.upgs {
+            collect_unit(upg);
         }
 
         // Generate string of dot
@@ -149,8 +146,8 @@ impl ModuleGraphData {
                     )
                 }
             } else {
-                let uig_node = UPGUnit::get_node_ty(node);
-                self.node_to_dot_attr(tcx, &uig_node)
+                let upg_node = UPGUnit::get_node_ty(node);
+                self.node_to_dot_attr(tcx, &upg_node)
             };
 
             self.node_styles.insert(def_id, attr);
