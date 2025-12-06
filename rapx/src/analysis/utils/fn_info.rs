@@ -10,7 +10,10 @@ use crate::{rap_debug, rap_warn};
 use rustc_data_structures::fx::FxHashMap;
 use rustc_hir::{Attribute, ImplItemKind, Safety, def::DefKind, def_id::DefId};
 use rustc_middle::{
-    mir::{BasicBlock, BinOp, Local, Operand, Terminator, TerminatorKind},
+    mir::{
+        BasicBlock, BinOp, Body, Local, Operand, Place, ProjectionElem, Rvalue, StatementKind,
+        Terminator, TerminatorKind,
+    },
     ty,
     ty::{AssocKind, Mutability, Ty, TyCtxt, TyKind},
 };
@@ -278,8 +281,47 @@ pub fn get_adt_access_info(tcx: TyCtxt<'_>, method_def_id: DefId) -> Option<(Def
     Some((adt_def_id, pub_count == total_count))
 }
 
-pub fn get_callees(tcx: TyCtxt<'_>, def_id: DefId) -> HashSet<DefId> {
-    let mut callees = HashSet::new();
+fn place_has_raw_deref<'tcx>(tcx: TyCtxt<'tcx>, body: &Body<'tcx>, place: &Place<'tcx>) -> bool {
+    for proj in place.projection.iter() {
+        if let ProjectionElem::Deref = proj.kind() {
+            let ty = place.ty(&body.local_decls, tcx).ty;
+            if let TyKind::RawPtr(_, _) = ty.kind() {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+pub fn get_rawptr_deref(tcx: TyCtxt<'_>, def_id: DefId) -> HashSet<DefId> {
+    let mut raw_ptrs = HashSet::new();
+    if tcx.is_mir_available(def_id) {
+        let body = tcx.optimized_mir(def_id);
+        for bb in body.basic_blocks.iter() {
+            for stmt in &bb.statements {
+                if let StatementKind::Assign(box (_, rvalue)) = &stmt.kind {
+                    if let Rvalue::Use(op) = rvalue {
+                        if let Operand::Copy(place) | Operand::Move(place) = op {
+                            if place_has_raw_deref(tcx, &body, place) {
+                                raw_ptrs.insert(def_id);
+                            }
+                        }
+                    }
+
+                    if let Rvalue::Ref(_, _, place) = rvalue {
+                        if place_has_raw_deref(tcx, &body, place) {
+                            raw_ptrs.insert(def_id);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    raw_ptrs
+}
+
+pub fn get_unsafe_callees(tcx: TyCtxt<'_>, def_id: DefId) -> HashSet<DefId> {
+    let mut unsafe_callees = HashSet::new();
     if tcx.is_mir_available(def_id) {
         let body = tcx.optimized_mir(def_id);
         for bb in body.basic_blocks.iter() {
@@ -287,14 +329,14 @@ pub fn get_callees(tcx: TyCtxt<'_>, def_id: DefId) -> HashSet<DefId> {
                 if let Operand::Constant(func_constant) = func {
                     if let ty::FnDef(callee_def_id, _) = func_constant.const_.ty().kind() {
                         if check_safety(tcx, *callee_def_id) == Safety::Unsafe {
-                            callees.insert(*callee_def_id);
+                            unsafe_callees.insert(*callee_def_id);
                         }
                     }
                 }
             }
         }
     }
-    callees
+    unsafe_callees
 }
 
 pub fn get_all_callees(tcx: TyCtxt<'_>, def_id: DefId) -> HashSet<DefId> {
@@ -944,26 +986,6 @@ fn find_generic_in_ty<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>, type_ident: &str) -
     None
 }
 
-// /// Find user-defined types in the parameter list
-// fn find_user_defined_type(tcx: TyCtxt, def_id: DefId, type_ident: String) -> Option<Ty> {
-//     let param_ty = parse_signature(tcx, def_id).1;
-//     param_ty.iter().find_map(|&ty| {
-//         // Peel off references and pointers to get to the underlying type
-//         let peeled_ty = ty.peel_refs();
-//         match peeled_ty.kind() {
-//             TyKind::Adt(adt_def, _raw_list) => {
-//                 // Compare the type name to our identifier
-//                 let name = tcx.item_name(adt_def.did()).to_string();
-//                 if name == type_ident {
-//                     return Some(peeled_ty);
-//                 }
-//             }
-//             _ => {}
-//         }
-//         None
-//     })
-// }
-
 pub fn reflect_generic<'tcx>(
     generic_mapping: &FxHashMap<String, Ty<'tcx>>,
     ty: Ty<'tcx>,
@@ -1057,7 +1079,6 @@ fn dfs_find_unsafe_chains(
     visited.remove(&def_id);
 }
 
-// 在函数中查找所有unsafe callee
 fn find_unsafe_callees_in_function(tcx: TyCtxt, def_id: DefId) -> Vec<(DefId, String)> {
     let mut callees = Vec::new();
 
@@ -1074,7 +1095,6 @@ fn find_unsafe_callees_in_function(tcx: TyCtxt, def_id: DefId) -> Vec<(DefId, St
     callees
 }
 
-// 从terminator中提取unsafe callee
 fn extract_unsafe_callee(tcx: TyCtxt<'_>, terminator: &Terminator<'_>) -> Option<(DefId, String)> {
     if let TerminatorKind::Call { func, .. } = &terminator.kind {
         if let Operand::Constant(func_constant) = func {
@@ -1089,7 +1109,6 @@ fn extract_unsafe_callee(tcx: TyCtxt<'_>, terminator: &Terminator<'_>) -> Option
     None
 }
 
-// 安全地获取MIR，处理可能无法获取MIR的情况
 fn try_get_mir(tcx: TyCtxt<'_>, def_id: DefId) -> Option<&rustc_middle::mir::Body<'_>> {
     if tcx.is_mir_available(def_id) {
         Some(tcx.optimized_mir(def_id))
@@ -1108,7 +1127,6 @@ pub fn get_cleaned_def_path_name(tcx: TyCtxt<'_>, def_id: DefId) -> String {
         .replace("__", "_")
 }
 
-// 打印调用链的函数
 pub fn print_unsafe_chains(chains: &[Vec<String>]) {
     if chains.is_empty() {
         return;

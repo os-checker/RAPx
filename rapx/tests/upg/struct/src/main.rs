@@ -1,5 +1,6 @@
 #![feature(box_as_ptr)]
 #![allow(dead_code)]
+#![allow(unused)]
 
 use std::slice;
 struct St1 { pub ptr: *mut u8, len: usize }

@@ -56,9 +56,10 @@ impl<'tcx> UPGAnalysis<'tcx> {
                         // map the function body_id back to its def_id;
                         let def_id = self.tcx.hir_body_owner_def_id(*body_id).to_def_id();
                         if fn_unsafe | block_unsafe {
-                            let callees = get_callees(self.tcx, def_id);
+                            let callees = get_unsafe_callees(self.tcx, def_id);
+                            let rawptrs = get_rawptr_deref(self.tcx, def_id);
                             let constructors = get_cons(self.tcx, def_id);
-                            self.insert_upg(def_id, callees, constructors);
+                            self.insert_upg(def_id, callees, rawptrs, constructors);
                         }
                     }
                 }
@@ -77,7 +78,13 @@ impl<'tcx> UPGAnalysis<'tcx> {
         render_dot_graphs(dot_strs);
     }
 
-    pub fn insert_upg(&mut self, caller: DefId, callees: HashSet<DefId>, caller_cons: Vec<DefId>) {
+    pub fn insert_upg(
+        &mut self,
+        caller: DefId,
+        callees: HashSet<DefId>,
+        rawptrs: HashSet<DefId>,
+        caller_cons: Vec<DefId>,
+    ) {
         let caller_typed = append_fn_with_types(self.tcx, caller);
         let mut callees_typed = HashSet::new();
         for callee in &callees {
@@ -92,7 +99,13 @@ impl<'tcx> UPGAnalysis<'tcx> {
         }
         let mut_methods_set = get_all_mutable_methods(self.tcx, caller);
         let mut_methods = mut_methods_set.keys().copied().collect();
-        let upg = UPGUnit::new(caller_typed, callees_typed, cons_typed, mut_methods);
+        let upg = UPGUnit::new(
+            caller_typed,
+            callees_typed,
+            rawptrs,
+            cons_typed,
+            mut_methods,
+        );
         self.upgs.push(upg);
     }
 }

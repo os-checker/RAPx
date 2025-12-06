@@ -20,7 +20,8 @@ impl<'tcx> UPGAnalysis<'tcx> {
             if adt_def.is_some() && adt_def.unwrap() == vec_def_id {
                 self.insert_upg(
                     def_id,
-                    get_callees(self.tcx, def_id),
+                    get_unsafe_callees(self.tcx, def_id),
+                    get_rawptr_deref(self.tcx, def_id),
                     get_cons(self.tcx, def_id),
                 );
             }
@@ -96,7 +97,12 @@ impl<'tcx> UPGAnalysis<'tcx> {
                     *sp_count_map.entry(sp).or_insert(0) += 1;
                 }
             }
-            self.insert_upg(*def_id, get_callees(tcx, *def_id), get_cons(tcx, *def_id));
+            self.insert_upg(
+                *def_id,
+                get_unsafe_callees(tcx, *def_id),
+                get_rawptr_deref(self.tcx, *def_id),
+                get_cons(tcx, *def_id),
+            );
         }
 
         rap_info!(
@@ -255,7 +261,7 @@ impl<'tcx> UPGAnalysis<'tcx> {
                                 if get_type(self.tcx, item_def_id) == FnKind::Method
                                     && check_safety(self.tcx, item_def_id) == Safety::Safe
                                 {
-                                    if !get_callees(tcx, item_def_id).is_empty() {
+                                    if !get_unsafe_callees(tcx, item_def_id).is_empty() {
                                         safe_methods.push(item_def_id);
                                     }
                                 }
@@ -322,7 +328,12 @@ impl<'tcx> UPGAnalysis<'tcx> {
         for local_def_id in def_id_sets {
             let def_id = local_def_id.to_def_id();
             if tcx.def_kind(def_id) == DefKind::Fn || tcx.def_kind(def_id) == DefKind::AssocFn {
-                self.insert_upg(def_id, get_callees(tcx, def_id), get_cons(tcx, def_id));
+                self.insert_upg(
+                    def_id,
+                    get_unsafe_callees(tcx, def_id),
+                    get_rawptr_deref(self.tcx, def_id),
+                    get_cons(tcx, def_id),
+                );
             }
         }
         for upg in &self.upgs {
@@ -346,7 +357,12 @@ impl<'tcx> UPGAnalysis<'tcx> {
                     && self.tcx.visibility(def_id) == Visibility::Public
                 {
                     unsafe_fn.insert(def_id);
-                    self.insert_upg(def_id, get_callees(tcx, def_id), get_cons(tcx, def_id));
+                    self.insert_upg(
+                        def_id,
+                        get_unsafe_callees(tcx, def_id),
+                        get_rawptr_deref(self.tcx, def_id),
+                        get_cons(tcx, def_id),
+                    );
                 }
             }
             DefKind::Mod => {
