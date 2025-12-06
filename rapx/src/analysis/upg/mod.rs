@@ -6,7 +6,6 @@ pub mod generate_dot;
 pub mod hir_visitor;
 pub mod render_module_dot;
 pub mod std_upg;
-pub mod upg_graph;
 
 use crate::analysis::utils::{draw_dot::render_dot_graphs, fn_info::*};
 use fn_collector::FnCollector;
@@ -18,8 +17,6 @@ use rustc_middle::{
     ty::TyCtxt,
 };
 use std::collections::HashSet;
-use upg_graph::IsolationGraphNode;
-
 use super::utils::types::FnType;
 
 #[derive(PartialEq)]
@@ -30,7 +27,6 @@ pub enum TargetCrate {
 
 pub struct UPGAnalysis<'tcx> {
     pub tcx: TyCtxt<'tcx>,
-    pub nodes: Vec<IsolationGraphNode>, // This field seems reserved for senryx;
     pub related_func_def_id: Vec<DefId>,
     pub upgs: Vec<UPGUnit>,
 }
@@ -39,7 +35,6 @@ impl<'tcx> UPGAnalysis<'tcx> {
     pub fn new(tcx: TyCtxt<'tcx>) -> Self {
         Self {
             tcx,
-            nodes: Vec::new(),
             related_func_def_id: Vec::new(),
             upgs: Vec::new(),
         }
@@ -88,34 +83,6 @@ impl<'tcx> UPGAnalysis<'tcx> {
         render_dot_graphs(dot_strs);
     }
 
-    pub fn check_if_node_exists(&self, body_did: DefId) -> bool {
-        if let Some(_node) = self.nodes.iter().find(|n| n.node_id == body_did) {
-            return true;
-        }
-        false
-    }
-
-    pub fn get_name(&self, body_did: DefId) -> String {
-        let tcx = self.tcx;
-        let mut name = String::new();
-        if let Some(assoc_item) = tcx.opt_associated_item(body_did) {
-            if let Some(impl_id) = assoc_item.impl_container(tcx) {
-                // get struct name
-                let ty = tcx.type_of(impl_id).skip_binder();
-                let type_name = ty.to_string();
-                let type_name = type_name.split('<').next().unwrap_or("").trim();
-                // get method name
-                let method_name = tcx.def_path(body_did).to_string_no_crate_verbose();
-                let method_name = method_name.split("::").last().unwrap_or("");
-                name = format!("{}.{}", type_name, method_name);
-            }
-        } else {
-            let verbose_name = tcx.def_path(body_did).to_string_no_crate_verbose();
-            name = verbose_name.split("::").last().unwrap_or("").to_string();
-        }
-        name
-    }
-
     pub fn search_constructor(&mut self, def_id: DefId) -> Vec<DefId> {
         let tcx = self.tcx;
         let mut constructors = Vec::new();
@@ -137,8 +104,6 @@ impl<'tcx> UPGAnalysis<'tcx> {
                                 let item_def_id = item.def_id;
                                 if get_type(self.tcx, item_def_id) == FnType::Constructor {
                                     constructors.push(item_def_id);
-                                    self.check_and_insert_node(item_def_id);
-                                    self.set_method_for_constructor(item_def_id, def_id);
                                 }
                             }
                         }
@@ -147,35 +112,6 @@ impl<'tcx> UPGAnalysis<'tcx> {
             }
         }
         constructors
-    }
-
-    pub fn check_and_insert_node(&mut self, body_did: DefId) {
-        if self.check_if_node_exists(body_did) {
-            return;
-        }
-        let node_type = get_type(self.tcx, body_did);
-        let name = self.get_name(body_did);
-        let is_crate_api = self.is_crate_api_node(body_did);
-        let node_safety = check_safety(self.tcx, body_did);
-        let mut new_node =
-            IsolationGraphNode::new(body_did, node_type, name, node_safety, is_crate_api);
-        if node_type == FnType::Method {
-            new_node.constructors = self.search_constructor(body_did);
-        }
-        new_node.visited_tag = false;
-        self.nodes.push(new_node);
-    }
-
-    pub fn set_method_for_constructor(&mut self, constructor_did: DefId, method_did: DefId) {
-        if let Some(node) = self
-            .nodes
-            .iter_mut()
-            .find(|node| node.node_id == constructor_did)
-        {
-            if !node.methods.contains(&method_did) {
-                node.methods.push(method_did);
-            }
-        }
     }
 
     pub fn is_crate_api_node(&self, body_did: DefId) -> bool {
