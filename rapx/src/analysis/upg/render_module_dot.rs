@@ -5,7 +5,7 @@ use std::{
 
 use super::{
     UPGAnalysis,
-    generate_dot::{NodeType, UPGEdge, UPGNode, UPGUnit},
+    upg_unit::{NodeType, UPGEdge, UPGNode, UPGUnit},
 };
 use crate::analysis::utils::{
     draw_dot::render_dot_graphs,
@@ -84,7 +84,7 @@ impl<'tcx> UPGAnalysis<'tcx> {
         // Generate string of dot
         let mut final_dots = Vec::new();
         for (mod_name, data) in modules_data {
-            let dot = data.generate_dot_string(&mod_name);
+            let dot = data.upg_unit_string(&mod_name);
             final_dots.push((mod_name, dot));
         }
 
@@ -204,7 +204,7 @@ impl ModuleGraphData {
         }
     }
 
-    fn generate_dot_string(&self, module_name: &str) -> String {
+    fn upg_unit_string(&self, module_name: &str) -> String {
         let mut dot = String::new();
         let graph_id = module_name
             .replace("::", "_")

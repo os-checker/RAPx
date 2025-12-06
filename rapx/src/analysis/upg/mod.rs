@@ -2,14 +2,14 @@
  * This module generates the unsafety propagation graph for each Rust module in the target crate.
  */
 pub mod fn_collector;
-pub mod generate_dot;
+pub mod upg_unit;
 pub mod hir_visitor;
 pub mod render_module_dot;
 pub mod std_upg;
 
 use crate::analysis::utils::{draw_dot::render_dot_graphs, fn_info::*};
 use fn_collector::FnCollector;
-use generate_dot::UPGUnit;
+use upg_unit::UPGUnit;
 use hir_visitor::ContainsUnsafe;
 use rustc_hir::def_id::DefId;
 use rustc_middle::ty::TyCtxt;

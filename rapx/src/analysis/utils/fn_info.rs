@@ -157,7 +157,6 @@ pub fn check_safety(tcx: TyCtxt<'_>, def_id: DefId) -> bool {
     fn_sig.safety() == rustc_hir::Safety::Unsafe
 }
 
-//retval: 0-constructor, 1-method, 2-function
 pub fn get_type(tcx: TyCtxt<'_>, def_id: DefId) -> FnKind {
     let mut node_type = 2;
     if let Some(assoc_item) = tcx.opt_associated_item(def_id) {
