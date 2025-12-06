@@ -1,7 +1,4 @@
-use super::{
-    UPGAnalysis,
-    generate_dot::{NodeType, UPGUnit},
-};
+use super::UPGAnalysis;
 use crate::analysis::utils::{fn_info::*, show_mir::display_mir};
 use rustc_hir::{def::DefKind, def_id::DefId};
 use rustc_middle::{
@@ -21,7 +18,7 @@ impl<'tcx> UPGAnalysis<'tcx> {
         for &def_id in &all_std_fn_def {
             let adt_def = get_adt_def_id_by_adt_method(self.tcx, def_id);
             if adt_def.is_some() && adt_def.unwrap() == vec_def_id {
-                self.insert_uig(
+                self.insert_upg(
                     def_id,
                     get_callees(self.tcx, def_id),
                     get_cons(self.tcx, def_id),
@@ -98,7 +95,7 @@ impl<'tcx> UPGAnalysis<'tcx> {
                     *sp_count_map.entry(sp).or_insert(0) += 1;
                 }
             }
-            self.insert_uig(*def_id, get_callees(tcx, *def_id), get_cons(tcx, *def_id));
+            self.insert_upg(*def_id, get_callees(tcx, *def_id), get_cons(tcx, *def_id));
         }
 
         rap_info!(
@@ -337,7 +334,7 @@ impl<'tcx> UPGAnalysis<'tcx> {
         for local_def_id in def_id_sets {
             let def_id = local_def_id.to_def_id();
             if tcx.def_kind(def_id) == DefKind::Fn || tcx.def_kind(def_id) == DefKind::AssocFn {
-                self.insert_uig(def_id, get_callees(tcx, def_id), get_cons(tcx, def_id));
+                self.insert_upg(def_id, get_callees(tcx, def_id), get_cons(tcx, def_id));
             }
         }
         for uig in &self.uigs {
@@ -362,7 +359,7 @@ impl<'tcx> UPGAnalysis<'tcx> {
             DefKind::Fn | DefKind::AssocFn => {
                 if check_safety(tcx, def_id) && self.tcx.visibility(def_id) == Visibility::Public {
                     unsafe_fn.insert(def_id);
-                    self.insert_uig(def_id, get_callees(tcx, def_id), get_cons(tcx, def_id));
+                    self.insert_upg(def_id, get_callees(tcx, def_id), get_cons(tcx, def_id));
                 }
             }
             DefKind::Mod => {
@@ -391,35 +388,6 @@ impl<'tcx> UPGAnalysis<'tcx> {
             _ => {
                 // println!("{:?}",tcx.def_kind(def_id));
             }
-        }
-    }
-
-    pub fn insert_uig(
-        &mut self,
-        caller: DefId,
-        callee_set: HashSet<DefId>,
-        caller_cons: Vec<NodeType>,
-    ) {
-        let mut pairs = HashSet::new();
-        for callee in &callee_set {
-            let callee_cons = Vec::new();
-            pairs.insert((generate_node_ty(self.tcx, *callee), callee_cons));
-        }
-        if !check_safety(self.tcx, caller) && callee_set.is_empty() {
-            return;
-        }
-        let mut_methods_set = get_all_mutable_methods(self.tcx, caller);
-        let mut_methods = mut_methods_set.keys().copied().collect();
-        let uig = UPGUnit::new_by_pair(
-            generate_node_ty(self.tcx, caller),
-            caller_cons,
-            pairs,
-            mut_methods,
-        );
-        if !callee_set.is_empty() {
-            self.uigs.push(uig);
-        } else {
-            self.single.push(uig);
         }
     }
 }

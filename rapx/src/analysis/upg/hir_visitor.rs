@@ -1,6 +1,6 @@
 use rustc_data_structures::fx::FxHashMap;
 use rustc_hir::{
-    Block, Body, BodyId, ExprKind, ImplItemKind, QPath, def_id::DefId, intravisit,
+    Block, BlockCheckMode, Body, BodyId, ExprKind, ImplItemKind, QPath, def_id::DefId, intravisit,
     intravisit::Visitor,
 };
 use rustc_middle::ty::{self, Ty, TyCtxt};
@@ -8,7 +8,7 @@ use std::collections::HashSet;
 
 pub struct ContainsUnsafe<'tcx> {
     tcx: TyCtxt<'tcx>,
-    function_unsafe: bool,
+    fn_unsafe: bool,
     block_unsafe: bool,
 }
 
@@ -16,34 +16,40 @@ impl<'tcx> ContainsUnsafe<'tcx> {
     pub fn contains_unsafe(tcx: TyCtxt<'tcx>, body_id: BodyId) -> (bool, bool) {
         let mut visitor = ContainsUnsafe {
             tcx,
-            function_unsafe: false,
+            fn_unsafe: false,
             block_unsafe: false,
         };
 
         let body = visitor.tcx.hir_body(body_id);
-        visitor.function_unsafe = visitor.body_unsafety(body);
+        visitor.fn_unsafety(body);
         visitor.visit_body(body);
 
-        (visitor.function_unsafe, visitor.block_unsafe)
+        (visitor.fn_unsafe, visitor.block_unsafe)
     }
 
-    fn body_unsafety(&self, body: &'tcx Body<'tcx>) -> bool {
+    /*
+     * Check if the body corresponds to a function;
+     * If yes, check the function safety declaration based on its signature.
+     */
+    fn fn_unsafety(&mut self, body: &'tcx Body<'tcx>) {
         let did = body.value.hir_id.owner.to_def_id();
         if self.tcx.def_kind(did) == rustc_hir::def::DefKind::Fn
             || self.tcx.def_kind(did) == rustc_hir::def::DefKind::AssocFn
         {
             let sig = self.tcx.fn_sig(did);
             if let rustc_hir::Safety::Unsafe = sig.skip_binder().safety() {
-                return true;
+                self.fn_unsafe = true;
+                return;
             }
         }
-        false
     }
 }
 
+/*
+ * Check if each block contains unsafe marker.
+ */
 impl<'tcx> Visitor<'tcx> for ContainsUnsafe<'tcx> {
     fn visit_block(&mut self, block: &'tcx Block<'tcx>) {
-        use rustc_hir::BlockCheckMode;
         if let BlockCheckMode::UnsafeBlock(_unsafe_source) = block.rules {
             self.block_unsafe = true;
         }

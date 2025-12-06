@@ -10,7 +10,7 @@ pub mod upg_graph;
 
 use crate::analysis::utils::{draw_dot::render_dot_graphs, fn_info::*};
 use fn_collector::FnCollector;
-use generate_dot::UPGUnit;
+use generate_dot::{NodeType, UPGUnit};
 use hir_visitor::ContainsUnsafe;
 use rustc_hir::def_id::DefId;
 use rustc_middle::{
@@ -18,7 +18,7 @@ use rustc_middle::{
     ty,
     ty::TyCtxt,
 };
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 use upg_graph::IsolationGraphNode;
 
 #[derive(PartialEq)]
@@ -53,14 +53,21 @@ impl<'tcx> UPGAnalysis<'tcx> {
                 return;
             }
             _ => {
-                let related_items = FnCollector::collect(self.tcx);
-                for vec in related_items.values() {
-                    for (body_id, _span) in vec {
-                        let (function_unsafe, block_unsafe) =
+                /* Type of collected data: FxHashMap<Option<HirId>, Vec<(BodyId, Span)>>;
+                 * For a function, the Vec contains only one entry;
+                 * For implementations of structs and traits, the Vec contains all associated 
+                 * function entries.
+                 */
+                let fns = FnCollector::collect(self.tcx);
+                for vec in fns.values() {
+                    for (body_id, _span) in vec { // each function or associated function in
+                                                  // structs and traits
+                        let (fn_unsafe, block_unsafe) =
                             ContainsUnsafe::contains_unsafe(self.tcx, *body_id);
+                        // map the function body_id back to its def_id;
                         let def_id = self.tcx.hir_body_owner_def_id(*body_id).to_def_id();
-                        if function_unsafe | block_unsafe {
-                            self.insert_uig(
+                        if fn_unsafe | block_unsafe {
+                            self.insert_upg(
                                 def_id,
                                 get_callees(self.tcx, def_id),
                                 get_cons(self.tcx, def_id),
@@ -311,6 +318,35 @@ impl<'tcx> UPGAnalysis<'tcx> {
                 "name:{:?},safety:{:?},calles:{:?}",
                 node.node_name, node.node_unsafety, node.callees
             );
+        }
+    }
+
+    pub fn insert_upg(
+        &mut self,
+        caller: DefId,
+        callee_set: HashSet<DefId>,
+        caller_cons: Vec<NodeType>,
+    ) {
+        let mut pairs = HashSet::new();
+        for callee in &callee_set {
+            let callee_cons = Vec::new();
+            pairs.insert((generate_node_ty(self.tcx, *callee), callee_cons));
+        }
+        if !check_safety(self.tcx, caller) && callee_set.is_empty() {
+            return;
+        }
+        let mut_methods_set = get_all_mutable_methods(self.tcx, caller);
+        let mut_methods = mut_methods_set.keys().copied().collect();
+        let uig = UPGUnit::new_by_pair(
+            generate_node_ty(self.tcx, caller),
+            caller_cons,
+            pairs,
+            mut_methods,
+        );
+        if !callee_set.is_empty() {
+            self.uigs.push(uig);
+        } else {
+            self.single.push(uig);
         }
     }
 }

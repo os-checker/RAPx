@@ -101,15 +101,13 @@ pub fn get_cleaned_def_path_name_ori(tcx: TyCtxt, def_id: DefId) -> String {
 
 pub fn get_sp_json() -> serde_json::Value {
     let json_data: serde_json::Value =
-        serde_json::from_str(include_str!("../upg/data/std_sps.json"))
-            .expect("Unable to parse JSON");
+        serde_json::from_str(include_str!("data/std_sps.json")).expect("Unable to parse JSON");
     json_data
 }
 
 pub fn get_std_api_signature_json() -> serde_json::Value {
     let json_data: serde_json::Value =
-        serde_json::from_str(include_str!("../upg/data/std_sig.json"))
-            .expect("Unable to parse JSON");
+        serde_json::from_str(include_str!("data/std_sig.json")).expect("Unable to parse JSON");
     json_data
 }
 
@@ -1130,34 +1128,6 @@ pub fn get_all_std_fns_by_rustc_public(tcx: TyCtxt) -> Vec<DefId> {
     }
     results
 }
-
-// pub fn generate_uig_for_one_struct(tcx: TyCtxt, def_id: DefId, adt_def_id: DefId) {
-//     let adt_def = get_adt_def_id_by_adt_method(tcx, def_id);
-//     let mut uig_entrance = UnsafetyIsolationCheck::new(tcx);
-//     let impls = tcx.inherent_impls(adt_def.unwrap());
-//     let impl_results = get_impl_items_of_struct(tcx, adt_def.unwrap());
-//     println!("impls {:?}", impl_results);
-//     for impl_def_id in impls {
-//         // println!("impls {:?}", tcx.associated_item_def_ids(impl_def_id));
-//         for item in tcx.associated_item_def_ids(impl_def_id) {
-//             if tcx.def_kind(item) == DefKind::Fn || tcx.def_kind(item) == DefKind::AssocFn {
-//                 println!("item {:?}", item);
-//                 uig_entrance.insert_uig(*item, get_callees(tcx, *item), get_cons(tcx, *item));
-//             }
-//         }
-//     }
-
-//     let mut dot_strs = Vec::new();
-//     for uig in &uig_entrance.uigs {
-//         let dot_str = uig.generate_dot_str();
-//         dot_strs.push(dot_str);
-//     }
-//     for uig in &uig_entrance.single {
-//         let dot_str = uig.generate_dot_str();
-//         dot_strs.push(dot_str);
-//     }
-//     render_dot_graphs(dot_strs);
-// }
 
 pub fn generate_mir_cfg_dot(tcx: TyCtxt<'_>, def_id: DefId) -> Result<(), std::io::Error> {
     let mir = tcx.optimized_mir(def_id);
