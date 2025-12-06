@@ -144,21 +144,20 @@ impl UPGUnit {
         }
     }
 
-    /// (node.0, node.1, node.2) : (def_id, is_unsafe, type_of_func--0:cons,1:method,2:function)
     pub fn get_node_ty(node: FnInfo) -> UPGNode {
-        match (node.fn_safety, node.fn_kind) {
-            (Safety::Unsafe, FnKind::Constructor) => {
-                UPGNode::UnsafeFn(node.def_id, "septagon".to_string())
-            }
-            (Safety::Unsafe, FnKind::Method) => {
-                UPGNode::UnsafeFn(node.def_id, "ellipse".to_string())
-            }
-            (Safety::Unsafe, FnKind::Fn) => UPGNode::UnsafeFn(node.def_id, "box".to_string()),
-            (Safety::Safe, FnKind::Constructor) => {
-                UPGNode::SafeFn(node.def_id, "septagon".to_string())
-            }
-            (Safety::Safe, FnKind::Method) => UPGNode::SafeFn(node.def_id, "ellipse".to_string()),
-            (Safety::Safe, FnKind::Fn) => UPGNode::SafeFn(node.def_id, "box".to_string()),
+        match node.fn_safety {
+            Safety::Unsafe => match node.fn_kind {
+                FnKind::Constructor => UPGNode::UnsafeFn(node.def_id, "septagon".to_string()),
+                FnKind::Method => UPGNode::UnsafeFn(node.def_id, "ellipse".to_string()),
+                FnKind::Fn => UPGNode::UnsafeFn(node.def_id, "box".to_string()),
+                FnKind::Intrinsic => UPGNode::UnsafeFn(node.def_id, "box".to_string()),
+            },
+            Safety::Safe => match node.fn_kind {
+                FnKind::Constructor => UPGNode::SafeFn(node.def_id, "septagon".to_string()),
+                FnKind::Method => UPGNode::SafeFn(node.def_id, "ellipse".to_string()),
+                FnKind::Fn => UPGNode::SafeFn(node.def_id, "box".to_string()),
+                FnKind::Intrinsic => UPGNode::SafeFn(node.def_id, "box".to_string()),
+            },
         }
     }
 

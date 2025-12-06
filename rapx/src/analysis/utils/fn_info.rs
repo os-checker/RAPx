@@ -30,6 +30,7 @@ pub enum FnKind {
     Fn,
     Method,
     Constructor,
+    Intrinsic,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
@@ -282,9 +283,11 @@ pub fn get_adt_access_info(tcx: TyCtxt<'_>, method_def_id: DefId) -> Option<(Def
 }
 
 fn place_has_raw_deref<'tcx>(tcx: TyCtxt<'tcx>, body: &Body<'tcx>, place: &Place<'tcx>) -> bool {
+    rap_info!("place_has_raw_deref: {:?}", place);
     for proj in place.projection.iter() {
         if let ProjectionElem::Deref = proj.kind() {
             let ty = place.ty(&body.local_decls, tcx).ty;
+            rap_info!("ty = {:?}", ty);
             if let TyKind::RawPtr(_, _) = ty.kind() {
                 return true;
             }
@@ -299,8 +302,12 @@ pub fn get_rawptr_deref(tcx: TyCtxt<'_>, def_id: DefId) -> HashSet<DefId> {
         let body = tcx.optimized_mir(def_id);
         for bb in body.basic_blocks.iter() {
             for stmt in &bb.statements {
-                if let StatementKind::Assign(box (_, rvalue)) = &stmt.kind {
-                    if let Rvalue::Use(op) = rvalue {
+                if let StatementKind::Assign(box (lhs, rhs)) = &stmt.kind {
+                    rap_info!("Assign: {:?} = {:?}", lhs, rhs);
+                    if place_has_raw_deref(tcx, &body, lhs) {
+                        raw_ptrs.insert(def_id);
+                    }
+                    if let Rvalue::Use(op) = rhs {
                         if let Operand::Copy(place) | Operand::Move(place) = op {
                             if place_has_raw_deref(tcx, &body, place) {
                                 raw_ptrs.insert(def_id);
@@ -308,7 +315,7 @@ pub fn get_rawptr_deref(tcx: TyCtxt<'_>, def_id: DefId) -> HashSet<DefId> {
                         }
                     }
 
-                    if let Rvalue::Ref(_, _, place) = rvalue {
+                    if let Rvalue::Ref(_, _, place) = rhs {
                         if place_has_raw_deref(tcx, &body, place) {
                             raw_ptrs.insert(def_id);
                         }
