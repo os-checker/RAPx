@@ -1,10 +1,11 @@
 use rustc_hir::def_id::DefId;
 
+use crate::analysis::utils::types::FnType;
+
 #[derive(Debug, Clone)]
 pub struct IsolationGraphNode {
     pub node_id: DefId,
-    //0:constructor, 1:method, 2:function
-    pub node_type: usize,
+    pub node_type: FnType,
     pub node_name: String,
     pub node_unsafety: bool,
     //if this node is a method, then it may have constructors
@@ -22,7 +23,7 @@ pub struct IsolationGraphNode {
 impl IsolationGraphNode {
     pub fn new(
         node_id: DefId,
-        node_type: usize,
+        node_type: FnType,
         node_name: String,
         node_unsafety: bool,
         is_crate_api: bool,

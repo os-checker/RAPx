@@ -1,5 +1,5 @@
 use super::UPGAnalysis;
-use crate::analysis::utils::{fn_info::*, show_mir::display_mir};
+use crate::analysis::utils::{fn_info::*, show_mir::display_mir, types::FnType};
 use rustc_hir::{def::DefKind, def_id::DefId};
 use rustc_middle::{
     mir::Local,
@@ -130,7 +130,7 @@ impl<'tcx> UPGAnalysis<'tcx> {
         let mut method_unsafe_caller = Vec::new();
         let mut method_safe_caller = Vec::new();
         for upg in &self.upgs {
-            if upg.caller.2 == 1 {
+            if upg.caller.2 == FnType::Method {
                 // method
                 if upg.callees.is_empty() {
                     method_no_callee.push(upg.clone());
@@ -234,31 +234,31 @@ impl<'tcx> UPGAnalysis<'tcx> {
                                 if !get_sp(self.tcx, item_def_id).is_empty() {
                                     vi_flag = true;
                                 }
-                                if get_type(self.tcx, item_def_id) == 0
+                                if get_type(self.tcx, item_def_id) == FnType::Constructor 
                                     && check_safety(self.tcx, item_def_id)
                                 // && get_sp(self.tcx, item_def_id).len() > 0
                                 {
                                     unsafe_constructors.push(item_def_id);
                                 }
-                                if get_type(self.tcx, item_def_id) == 0
+                                if get_type(self.tcx, item_def_id) == FnType::Constructor
                                     && !check_safety(self.tcx, item_def_id)
                                 {
                                     safe_constructors.push(item_def_id);
                                 }
-                                if get_type(self.tcx, item_def_id) == 1
+                                if get_type(self.tcx, item_def_id) == FnType::Method
                                     && check_safety(self.tcx, item_def_id)
                                 // && get_sp(self.tcx, item_def_id).len() > 0
                                 {
                                     unsafe_methods.push(item_def_id);
                                 }
-                                if get_type(self.tcx, item_def_id) == 1
+                                if get_type(self.tcx, item_def_id) == FnType::Method
                                     && !check_safety(self.tcx, item_def_id)
                                 {
                                     if !get_callees(tcx, item_def_id).is_empty() {
                                         safe_methods.push(item_def_id);
                                     }
                                 }
-                                if get_type(self.tcx, item_def_id) == 1
+                                if get_type(self.tcx, item_def_id) == FnType::Method
                                     && has_mut_self_param(self.tcx, item_def_id)
                                 {
                                     mut_methods.push(item_def_id);

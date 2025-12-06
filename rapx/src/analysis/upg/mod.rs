@@ -20,6 +20,8 @@ use rustc_middle::{
 use std::collections::HashSet;
 use upg_graph::IsolationGraphNode;
 
+use super::utils::types::FnType;
+
 #[derive(PartialEq)]
 pub enum TargetCrate {
     Std,
@@ -133,7 +135,7 @@ impl<'tcx> UPGAnalysis<'tcx> {
                             } = item.kind
                             {
                                 let item_def_id = item.def_id;
-                                if get_type(self.tcx, item_def_id) == 0 {
+                                if get_type(self.tcx, item_def_id) == FnType::Constructor {
                                     constructors.push(item_def_id);
                                     self.check_and_insert_node(item_def_id);
                                     self.set_method_for_constructor(item_def_id, def_id);
@@ -157,7 +159,7 @@ impl<'tcx> UPGAnalysis<'tcx> {
         let node_safety = check_safety(self.tcx, body_did);
         let mut new_node =
             IsolationGraphNode::new(body_did, node_type, name, node_safety, is_crate_api);
-        if node_type == 1 {
+        if node_type == FnType::Method {
             new_node.constructors = self.search_constructor(body_did);
         }
         new_node.visited_tag = false;

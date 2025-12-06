@@ -1,4 +1,4 @@
-use super::draw_dot::render_dot_string;
+use super::{draw_dot::render_dot_string, types::FnType};
 use crate::analysis::{
     core::dataflow::{DataFlowAnalysis, default::DataFlowAnalyzer},
     senryx::{
@@ -158,36 +158,36 @@ pub fn check_safety(tcx: TyCtxt<'_>, def_id: DefId) -> bool {
 }
 
 //retval: 0-constructor, 1-method, 2-function
-pub fn get_type(tcx: TyCtxt<'_>, def_id: DefId) -> usize {
+pub fn get_type(tcx: TyCtxt<'_>, def_id: DefId) -> FnType {
     let mut node_type = 2;
     if let Some(assoc_item) = tcx.opt_associated_item(def_id) {
         match assoc_item.kind {
             AssocKind::Fn { has_self, .. } => {
                 if has_self {
-                    node_type = 1;
+                    return FnType::Method;
                 } else {
                     let fn_sig = tcx.fn_sig(def_id).skip_binder();
                     let output = fn_sig.output().skip_binder();
                     // return type is 'Self'
                     if output.is_param(0) {
-                        node_type = 0;
+                        return FnType::Constructor;
                     }
                     // return type is struct's name
                     if let Some(impl_id) = assoc_item.impl_container(tcx) {
                         let ty = tcx.type_of(impl_id).skip_binder();
                         if output == ty {
-                            node_type = 0;
+                            return FnType::Constructor;
                         }
                     }
                     match output.kind() {
                         TyKind::Ref(_, ref_ty, _) => {
                             if ref_ty.is_param(0) {
-                                node_type = 0;
+                                return FnType::Constructor;
                             }
                             if let Some(impl_id) = assoc_item.impl_container(tcx) {
                                 let ty = tcx.type_of(impl_id).skip_binder();
                                 if *ref_ty == ty {
-                                    node_type = 0;
+                                    return FnType::Constructor;
                                 }
                             }
                         }
@@ -199,12 +199,12 @@ pub fn get_type(tcx: TyCtxt<'_>, def_id: DefId) -> usize {
                             {
                                 let inner_ty = substs.type_at(0);
                                 if inner_ty.is_param(0) {
-                                    node_type = 0;
+                                    return FnType::Constructor;
                                 }
                                 if let Some(impl_id) = assoc_item.impl_container(tcx) {
                                     let ty_impl = tcx.type_of(impl_id).skip_binder();
                                     if inner_ty == ty_impl {
-                                        node_type = 0;
+                                        return FnType::Constructor;
                                     }
                                 }
                             }
@@ -216,7 +216,7 @@ pub fn get_type(tcx: TyCtxt<'_>, def_id: DefId) -> usize {
             _ => todo!(),
         }
     }
-    node_type
+    return FnType::Fn;
 }
 
 pub fn get_adt_ty(tcx: TyCtxt, def_id: DefId) -> Option<Ty> {
@@ -1222,7 +1222,7 @@ pub fn convert_alias_to_sets(alias_map: Vec<usize>) -> Vec<Vec<usize>> {
 // Return set of (mutable method def_id, fields can be modified)
 pub fn get_all_mutable_methods(tcx: TyCtxt, src_def_id: DefId) -> HashMap<DefId, HashSet<usize>> {
     let mut std_results = HashMap::new();
-    if get_type(tcx, src_def_id) == 0 {
+    if get_type(tcx, src_def_id) == FnType::Constructor {
         return std_results;
     }
     let all_std_fn_def = get_all_std_fns_by_rustc_public(tcx);
@@ -1267,7 +1267,7 @@ pub fn get_all_mutable_methods(tcx: TyCtxt, src_def_id: DefId) -> HashMap<DefId,
 
 pub fn get_cons(tcx: TyCtxt<'_>, def_id: DefId) -> Vec<DefId> {
     let mut cons = Vec::new();
-    if tcx.def_kind(def_id) == DefKind::Fn || get_type(tcx, def_id) == 0 {
+    if tcx.def_kind(def_id) == DefKind::Fn || get_type(tcx, def_id) == FnType::Constructor {
         return cons;
     }
     if let Some(assoc_item) = tcx.opt_associated_item(def_id) {
@@ -1281,7 +1281,7 @@ pub fn get_cons(tcx: TyCtxt<'_>, def_id: DefId) -> Vec<DefId> {
                     for item in tcx.associated_item_def_ids(impl_def_id) {
                         if (tcx.def_kind(item) == DefKind::Fn
                             || tcx.def_kind(item) == DefKind::AssocFn)
-                            && get_type(tcx, *item) == 0
+                            && get_type(tcx, *item) == FnType::Constructor 
                         {
                             cons.push(*item);
                         }
@@ -1293,6 +1293,6 @@ pub fn get_cons(tcx: TyCtxt<'_>, def_id: DefId) -> Vec<DefId> {
     cons
 }
 
-pub fn append_fn_with_types(tcx: TyCtxt, def_id: DefId) -> (DefId, bool, usize) {
+pub fn append_fn_with_types(tcx: TyCtxt, def_id: DefId) -> (DefId, bool, FnType) {
     (def_id, check_safety(tcx, def_id), get_type(tcx, def_id))
 }

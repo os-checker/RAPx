@@ -3,3 +3,5 @@ pub mod draw_dot;
 #[allow(unused)]
 pub mod fn_info;
 pub mod show_mir;
+pub mod types;
+

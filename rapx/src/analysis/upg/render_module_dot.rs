@@ -9,7 +9,7 @@ use super::{
 };
 use crate::analysis::utils::{
     draw_dot::render_dot_graphs,
-    fn_info::{check_safety, get_type},
+    fn_info::{check_safety, get_type}, types::FnType,
 };
 use rustc_hir::def_id::DefId;
 use rustc_middle::ty::TyCtxt;
@@ -33,20 +33,20 @@ impl<'tcx> UPGAnalysis<'tcx> {
                 crate::analysis::utils::fn_info::get_adt_access_info(self.tcx, caller_id)
             {
                 if is_all_pub {
-                    let adt_node_type = (adt_def_id, false, 0);
+                    let adt_node_type = (adt_def_id, false, FnType::Constructor);
                     let label = format!("Literal Constructor: {}", self.tcx.item_name(adt_def_id));
                     module_data.add_node(self.tcx, adt_node_type, Some(label));
-                    if unit.caller.2 == 1 {
+                    if unit.caller.2 == FnType::Method {
                         module_data.add_edge(adt_def_id, caller_id, UPGEdge::ConsToMethod);
                     }
                 } else {
-                    let adt_node_type = (adt_def_id, false, 1);
+                    let adt_node_type = (adt_def_id, false, FnType::Method);
                     let label = format!(
                         "MutMethod Introduced by PubFields: {}",
                         self.tcx.item_name(adt_def_id)
                     );
                     module_data.add_node(self.tcx, adt_node_type, Some(label));
-                    if unit.caller.2 == 1 {
+                    if unit.caller.2 == FnType::Method {
                         module_data.add_edge(adt_def_id, caller_id, UPGEdge::MutToCaller);
                     }
                 }
@@ -134,7 +134,7 @@ impl ModuleGraphData {
 
         if !self.node_styles.contains_key(&def_id) || custom_label.is_some() {
             let attr = if let Some(label) = custom_label {
-                if node_type == 0 {
+                if node_type == FnType::Constructor {
                     format!(
                         "label=\"{}\", shape=\"septagon\", style=\"filled\", fillcolor=\"#f0f0f0\", color=\"#555555\"",
                         label
