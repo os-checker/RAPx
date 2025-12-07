@@ -5,7 +5,7 @@ use petgraph::{
     graph::{DiGraph, EdgeReference, NodeIndex},
 };
 use rustc_hir::{Safety, def_id::DefId};
-use rustc_middle::ty::TyCtxt;
+use rustc_middle::{mir::Local, ty::TyCtxt};
 use std::{
     collections::HashSet,
     fmt::{self, Write},
@@ -52,7 +52,7 @@ impl fmt::Display for UPGEdge {
 pub struct UPGUnit {
     pub caller: FnInfo,
     pub callees: HashSet<FnInfo>,
-    pub rawptrs: HashSet<DefId>,
+    pub rawptrs: HashSet<Local>,
     pub caller_cons: HashSet<FnInfo>,
     pub mut_methods: Vec<DefId>,
 }
@@ -61,7 +61,7 @@ impl UPGUnit {
     pub fn new(
         caller: FnInfo,
         callees: HashSet<FnInfo>,
-        rawptrs: HashSet<DefId>,
+        rawptrs: HashSet<Local>,
         caller_cons: HashSet<FnInfo>,
         mut_methods: Vec<DefId>,
     ) -> Self {

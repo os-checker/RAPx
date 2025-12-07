@@ -11,7 +11,7 @@ use crate::analysis::utils::{draw_dot::render_dot_graphs, fn_info::*};
 use fn_collector::FnCollector;
 use hir_visitor::ContainsUnsafe;
 use rustc_hir::{Safety, def_id::DefId};
-use rustc_middle::ty::TyCtxt;
+use rustc_middle::{mir::Local, ty::TyCtxt};
 use std::collections::HashSet;
 use upg_unit::UPGUnit;
 
@@ -82,7 +82,7 @@ impl<'tcx> UPGAnalysis<'tcx> {
         &mut self,
         caller: DefId,
         callees: HashSet<DefId>,
-        rawptrs: HashSet<DefId>,
+        rawptrs: HashSet<Local>,
         caller_cons: Vec<DefId>,
     ) {
         let caller_typed = append_fn_with_types(self.tcx, caller);

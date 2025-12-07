@@ -314,7 +314,7 @@ fn place_has_raw_deref<'tcx>(tcx: TyCtxt<'tcx>, body: &Body<'tcx>, place: &Place
     false
 }
 
-pub fn get_rawptr_deref(tcx: TyCtxt<'_>, def_id: DefId) -> HashSet<DefId> {
+pub fn get_rawptr_deref(tcx: TyCtxt<'_>, def_id: DefId) -> HashSet<Local> {
     let mut raw_ptrs = HashSet::new();
     if tcx.is_mir_available(def_id) {
         let body = tcx.optimized_mir(def_id);
@@ -322,19 +322,18 @@ pub fn get_rawptr_deref(tcx: TyCtxt<'_>, def_id: DefId) -> HashSet<DefId> {
             for stmt in &bb.statements {
                 if let StatementKind::Assign(box (lhs, rhs)) = &stmt.kind {
                     if place_has_raw_deref(tcx, &body, lhs) {
-                        raw_ptrs.insert(def_id);
+                        raw_ptrs.insert(lhs.local);
                     }
                     if let Rvalue::Use(op) = rhs {
                         if let Operand::Copy(place) | Operand::Move(place) = op {
                             if place_has_raw_deref(tcx, &body, place) {
-                                raw_ptrs.insert(def_id);
+                                raw_ptrs.insert(place.local);
                             }
                         }
                     }
-
                     if let Rvalue::Ref(_, _, place) = rhs {
                         if place_has_raw_deref(tcx, &body, place) {
-                            raw_ptrs.insert(def_id);
+                            raw_ptrs.insert(place.local);
                         }
                     }
                 }
