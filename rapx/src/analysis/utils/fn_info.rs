@@ -50,6 +50,21 @@ impl FnInfo {
     }
 }
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub struct AdtInfo {
+    pub def_id: DefId,
+    pub literal_cons_enabled: bool,
+}
+
+impl AdtInfo {
+    pub fn new(def_id: DefId, literal_cons_enabled: bool) -> Self {
+        AdtInfo {
+            def_id,
+            literal_cons_enabled,
+        }
+    }
+}
+
 pub fn check_visibility(tcx: TyCtxt, func_defid: DefId) -> bool {
     if !tcx.visibility(func_defid).is_public() {
         return false;
@@ -257,7 +272,7 @@ pub fn get_adt_ty(tcx: TyCtxt, def_id: DefId) -> Option<Ty> {
 
 // check whether this adt contains a literal constructor
 // result: adt_def_id, is_literal
-pub fn get_adt_access_info(tcx: TyCtxt<'_>, method_def_id: DefId) -> Option<(DefId, bool)> {
+pub fn get_adt_via_method(tcx: TyCtxt<'_>, method_def_id: DefId) -> Option<AdtInfo> {
     let assoc_item = tcx.opt_associated_item(method_def_id)?;
     let impl_id = assoc_item.impl_container(tcx)?;
     let ty = tcx.type_of(impl_id).skip_binder();
@@ -268,7 +283,7 @@ pub fn get_adt_access_info(tcx: TyCtxt<'_>, method_def_id: DefId) -> Option<(Def
     let total_count = all_fields.len();
 
     if total_count == 0 {
-        return Some((adt_def_id, true));
+        return Some(AdtInfo::new(adt_def_id, true));
     }
 
     let pub_count = all_fields
@@ -279,7 +294,7 @@ pub fn get_adt_access_info(tcx: TyCtxt<'_>, method_def_id: DefId) -> Option<(Def
     if pub_count == 0 {
         return None;
     }
-    Some((adt_def_id, pub_count == total_count))
+    Some(AdtInfo::new(adt_def_id, pub_count == total_count))
 }
 
 fn place_has_raw_deref<'tcx>(tcx: TyCtxt<'tcx>, body: &Body<'tcx>, place: &Place<'tcx>) -> bool {

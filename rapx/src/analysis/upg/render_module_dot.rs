@@ -26,25 +26,23 @@ impl<'tcx> UPGAnalysis<'tcx> {
 
             module_data.add_node(self.tcx, unit.caller, None);
 
-            if let Some((adt_def_id, is_all_pub)) =
-                crate::analysis::utils::fn_info::get_adt_access_info(self.tcx, caller_id)
-            {
-                if is_all_pub {
-                    let adt_node_type = FnInfo::new(adt_def_id, Safety::Safe, FnKind::Constructor);
-                    let label = format!("Literal Constructor: {}", self.tcx.item_name(adt_def_id));
+            if let Some(adt) = get_adt_via_method(self.tcx, caller_id) {
+                if adt.literal_cons_enabled {
+                    let adt_node_type = FnInfo::new(adt.def_id, Safety::Safe, FnKind::Constructor);
+                    let label = format!("Literal Constructor: {}", self.tcx.item_name(adt.def_id));
                     module_data.add_node(self.tcx, adt_node_type, Some(label));
                     if unit.caller.fn_kind == FnKind::Method {
-                        module_data.add_edge(adt_def_id, caller_id, UPGEdge::ConsToMethod);
+                        module_data.add_edge(adt.def_id, caller_id, UPGEdge::ConsToMethod);
                     }
                 } else {
-                    let adt_node_type = FnInfo::new(adt_def_id, Safety::Safe, FnKind::Method);
+                    let adt_node_type = FnInfo::new(adt.def_id, Safety::Safe, FnKind::Method);
                     let label = format!(
                         "MutMethod Introduced by PubFields: {}",
-                        self.tcx.item_name(adt_def_id)
+                        self.tcx.item_name(adt.def_id)
                     );
                     module_data.add_node(self.tcx, adt_node_type, Some(label));
                     if unit.caller.fn_kind == FnKind::Method {
-                        module_data.add_edge(adt_def_id, caller_id, UPGEdge::MutToCaller);
+                        module_data.add_edge(adt.def_id, caller_id, UPGEdge::MutToCaller);
                     }
                 }
             }
