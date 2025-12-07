@@ -69,19 +69,32 @@ impl<'tcx> UPGAnalysis<'tcx> {
                 module_data.add_edge(unit.caller.def_id, callee.def_id, UPGEdge::CallerToCallee);
             }
 
-            rap_info!("raw ptr deref: {:?}", unit.rawptrs);
-            /*
             for rawptr in &unit.rawptrs {
-                let dummy_def_id = get_ptr_deref_dummy_def_id(self.tcx);
-                let rawptr_deref_fn = FnInfo::new(dummy_def_id, Safety::Unsafe, FnKind::Intrinsic);
-                module_data.add_node(
-                    self.tcx,
-                    rawptr_deref_fn,
-                    Some(String::from("Raw ptr deref")),
-                );
-                module_data.add_edge(unit.caller.def_id, dummy_def_id, UPGEdge::CallerToCallee);
+                match get_ptr_deref_dummy_def_id(self.tcx) {
+                    Some(dummy_fn_def_id) => {
+                        rap_info!(
+                            "raw ptr deref: dummy_fn_id = {:?}, rawptr = {:?}",
+                            dummy_fn_def_id,
+                            rawptr
+                        );
+                        let rawptr_deref_fn =
+                            FnInfo::new(dummy_fn_def_id, Safety::Unsafe, FnKind::Intrinsic);
+                        module_data.add_node(
+                            self.tcx,
+                            rawptr_deref_fn,
+                            Some(String::from("Raw ptr deref")),
+                        );
+                        module_data.add_edge(
+                            unit.caller.def_id,
+                            dummy_fn_def_id,
+                            UPGEdge::CallerToCallee,
+                        );
+                    }
+                    None => {
+                        rap_info!("fail to find the dummy ptr deref id.");
+                    }
+                }
             }
-            */
         };
 
         // Aggregate all Units

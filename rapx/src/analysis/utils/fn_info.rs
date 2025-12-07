@@ -1391,11 +1391,11 @@ pub fn search_constructor(tcx: TyCtxt, def_id: DefId) -> Vec<DefId> {
     constructors
 }
 
-pub fn get_ptr_deref_dummy_def_id(tcx: TyCtxt<'_>) -> DefId {
-    tcx.hir_crate_items(())
-        .free_items()
-        .find(|item| tcx.item_name(item.owner_id.to_def_id()).as_str() == "__raw_ptr_deref_dummy")
-        .unwrap()
-        .owner_id
-        .to_def_id()
+pub fn get_ptr_deref_dummy_def_id(tcx: TyCtxt<'_>) -> Option<DefId> {
+    tcx.hir_crate_items(()).free_items().find_map(|item_id| {
+        let def_id = item_id.owner_id.to_def_id();
+        let name = tcx.opt_item_name(def_id)?;
+
+        (name.as_str() == "__raw_ptr_deref_dummy").then_some(def_id)
+    })
 }
