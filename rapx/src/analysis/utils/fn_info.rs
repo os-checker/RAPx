@@ -8,7 +8,11 @@ use crate::analysis::{
 };
 use crate::{rap_debug, rap_warn};
 use rustc_data_structures::fx::FxHashMap;
-use rustc_hir::{Attribute, ImplItemKind, Safety, def::DefKind, def_id::DefId};
+use rustc_hir::{
+    Attribute, ImplItemKind, Safety,
+    def::DefKind,
+    def_id::{CrateNum, DefId, DefIndex},
+};
 use rustc_middle::{
     mir::{
         BasicBlock, BinOp, Body, Local, Operand, Place, ProjectionElem, Rvalue, StatementKind,
@@ -1385,4 +1389,13 @@ pub fn search_constructor(tcx: TyCtxt, def_id: DefId) -> Vec<DefId> {
         }
     }
     constructors
+}
+
+pub fn get_ptr_deref_dummy_def_id(tcx: TyCtxt<'_>) -> DefId {
+    tcx.hir_crate_items(())
+        .free_items()
+        .find(|item| tcx.item_name(item.owner_id.to_def_id()).as_str() == "__raw_ptr_deref_dummy")
+        .unwrap()
+        .owner_id
+        .to_def_id()
 }

@@ -8,7 +8,7 @@ use super::{
     upg_unit::{UPGEdge, UPGNode, UPGUnit},
 };
 use crate::analysis::utils::{draw_dot::render_dot_graphs, fn_info::*};
-use rustc_hir::{Safety, def_id::DefId};
+use rustc_hir::{Safety, def::DefKind, def_id::DefId};
 use rustc_middle::ty::TyCtxt;
 
 impl<'tcx> UPGAnalysis<'tcx> {
@@ -70,11 +70,18 @@ impl<'tcx> UPGAnalysis<'tcx> {
             }
 
             rap_info!("raw ptr deref: {:?}", unit.rawptrs);
+            /*
             for rawptr in &unit.rawptrs {
-                let rawptr_deref_fn = FnInfo::new(*rawptr, Safety::Unsafe, FnKind::Intrinsic);
-                module_data.add_node(self.tcx, rawptr_deref_fn, None);
-                module_data.add_edge(unit.caller.def_id, *rawptr, UPGEdge::CallerToCallee);
+                let dummy_def_id = get_ptr_deref_dummy_def_id(self.tcx);
+                let rawptr_deref_fn = FnInfo::new(dummy_def_id, Safety::Unsafe, FnKind::Intrinsic);
+                module_data.add_node(
+                    self.tcx,
+                    rawptr_deref_fn,
+                    Some(String::from("Raw ptr deref")),
+                );
+                module_data.add_edge(unit.caller.def_id, dummy_def_id, UPGEdge::CallerToCallee);
             }
+            */
         };
 
         // Aggregate all Units
@@ -110,7 +117,7 @@ impl<'tcx> UPGAnalysis<'tcx> {
 /// Holds graph data for a single module before DOT generation.
 struct ModuleGraphData {
     // Nodes grouped by their associated struct/type name.
-    struct_clusters: HashMap<String, HashSet<FnInfo>>,
+    structs: HashMap<String, HashSet<FnInfo>>,
     // Edges between DefIds with their type.
     edges: HashSet<(DefId, DefId, UPGEdge)>,
     // Pre-generated DOT attribute strings for each node (DefId).
@@ -120,18 +127,15 @@ struct ModuleGraphData {
 impl ModuleGraphData {
     fn new() -> Self {
         Self {
-            struct_clusters: HashMap::new(),
+            structs: HashMap::new(),
             edges: HashSet::new(),
             node_styles: HashMap::new(),
         }
     }
 
     fn add_node(&mut self, tcx: TyCtxt<'_>, node: FnInfo, custom_label: Option<String>) {
-        let struct_name = self.get_struct_group_name(tcx, node.def_id);
-        self.struct_clusters
-            .entry(struct_name)
-            .or_default()
-            .insert(node);
+        let adt_name = self.get_adt_name(tcx, node.def_id);
+        self.structs.entry(adt_name).or_default().insert(node);
 
         if !self.node_styles.contains_key(&node.def_id) || custom_label.is_some() {
             let attr = if let Some(label) = custom_label {
@@ -162,30 +166,29 @@ impl ModuleGraphData {
         self.edges.insert((from, to, edge_type));
     }
 
-    fn get_struct_group_name(&self, tcx: TyCtxt<'_>, def_id: DefId) -> String {
-        if let rustc_hir::def::DefKind::Struct
-        | rustc_hir::def::DefKind::Enum
-        | rustc_hir::def::DefKind::Union = tcx.def_kind(def_id)
-        {
-            let raw_name = tcx.type_of(def_id).skip_binder().to_string();
-            return raw_name
-                .split('<')
-                .next()
-                .unwrap_or(&raw_name)
-                .trim()
-                .to_string();
-        }
-        if let Some(assoc_item) = tcx.opt_associated_item(def_id) {
-            if let Some(impl_id) = assoc_item.impl_container(tcx) {
-                let ty = tcx.type_of(impl_id).skip_binder();
-                let raw_name = ty.to_string();
-                let clean_name = raw_name
+    fn get_adt_name(&self, tcx: TyCtxt<'_>, def_id: DefId) -> String {
+        match tcx.def_kind(def_id) {
+            DefKind::Struct | DefKind::Enum | DefKind::Union => {
+                let raw_name = tcx.type_of(def_id).skip_binder().to_string();
+                return raw_name
                     .split('<')
                     .next()
                     .unwrap_or(&raw_name)
                     .trim()
                     .to_string();
-                return clean_name;
+            }
+            _ => {}
+        }
+        if let Some(assoc_item) = tcx.opt_associated_item(def_id) {
+            if let Some(impl_id) = assoc_item.impl_container(tcx) {
+                let ty = tcx.type_of(impl_id).skip_binder();
+                let raw_name = ty.to_string();
+                return raw_name
+                    .split('<')
+                    .next()
+                    .unwrap_or(&raw_name)
+                    .trim()
+                    .to_string();
             }
         }
         "Free_Functions".to_string()
@@ -214,7 +217,7 @@ impl ModuleGraphData {
         writeln!(dot, "    compound=true;").unwrap();
         writeln!(dot, "    rankdir=LR;").unwrap();
 
-        for (struct_name, nodes) in &self.struct_clusters {
+        for (struct_name, nodes) in &self.structs {
             let cluster_id = format!(
                 "cluster_{}",
                 struct_name.replace(|c: char| !c.is_alphanumeric(), "_")

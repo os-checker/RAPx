@@ -144,9 +144,10 @@ impl Callbacks for RapCallback {
     fn after_crate_root_parsing(
         &mut self,
         _compiler: &interface::Compiler,
-        _krate: &mut ast::Crate,
+        krate: &mut ast::Crate,
     ) -> Compilation {
-        preprocess::ssa_preprocess::create_ssa_struct(_krate);
+        preprocess::dummy_ptr_deref::create_dummy_ptr_deref_fn(krate);
+        preprocess::ssa_preprocess::create_ssa_struct(krate);
         Compilation::Continue
     }
     fn after_analysis<'tcx>(&mut self, _compiler: &Compiler, tcx: TyCtxt<'tcx>) -> Compilation {
