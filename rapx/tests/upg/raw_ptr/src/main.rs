@@ -1,6 +1,6 @@
 unsafe fn f1(p: *mut i32) {
     unsafe {
-        *p += 1;
+        *p = 1;
     }
 }
 

@@ -58,7 +58,6 @@ impl<'tcx> UPGAnalysis<'tcx> {
                         if fn_unsafe | block_unsafe {
                             let callees = get_unsafe_callees(self.tcx, def_id);
                             let rawptrs = get_rawptr_deref(self.tcx, def_id);
-                            rap_info!("Raw pointer dereference: {:?}", rawptrs);
                             let constructors = get_cons(self.tcx, def_id);
                             self.insert_upg(def_id, callees, rawptrs, constructors);
                         }

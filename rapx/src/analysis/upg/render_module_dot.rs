@@ -71,7 +71,7 @@ impl<'tcx> UPGAnalysis<'tcx> {
                 module_data.add_edge(unit.caller.def_id, callee.def_id, UPGEdge::CallerToCallee);
             }
 
-            /* TO FIX */
+            rap_info!("raw ptr deref: {:?}", unit.rawptrs);
             for rawptr in &unit.rawptrs {
                 let rawptr_deref_fn = FnInfo::new(*rawptr, Safety::Unsafe, FnKind::Intrinsic);
                 module_data.add_node(self.tcx, rawptr_deref_fn, None);
