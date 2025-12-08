@@ -254,23 +254,17 @@ fn test_heap_proxy() {
     );
 }
 
-// #[test]
-// fn test_test_cons_merge() {
-//     let output = running_tests_with_arg("safety_check/test_cons_merge", "-verify");
-//     assert_eq!(output.contains("NonNull"), true);
-// }
+#[test]
+fn test_upg_raw_ptr() {
+    let output = running_tests_with_arg("upg/raw_ptr", "-upg");
+    assert_eq!(output.contains("raw_ptr_deref_dummy"), true);
+}
 
-// #[test]
-// fn test_init() {
-//     let output = running_tests_with_arg("safety_check/init", "-verify");
-//     assert_eq!(output.contains("Init"), true);
-// }
-
-// #[test]
-// fn test_cis() {
-//     let output = running_tests_with_arg("safety_check/verify_case1", "-verify");
-//     assert_eq!(output.contains("ValidPtr"), true);
-// }
+#[test]
+fn test_upg_static_mut() {
+    let output = running_tests_with_arg("upg/static_mut", "-upg");
+    assert_eq!(output.contains("::COUNTER"), true);
+}
 
 #[test]
 fn test_ssa_transform() {

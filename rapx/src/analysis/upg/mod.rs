@@ -83,9 +83,12 @@ impl<'tcx> UPGAnalysis<'tcx> {
         let raw_ptrs = get_rawptr_deref(self.tcx, def_id);
         let global_locals = collect_global_local_pairs(self.tcx, def_id);
         let static_muts: HashSet<DefId> = global_locals.keys().copied().collect();
+
+        /*Static mutable access is in nature via raw ptr; We have to prune the duplication.*/
         let global_locals_set: HashSet<Local> = global_locals.values().flatten().copied().collect();
         let raw_ptrs_filtered: HashSet<Local> =
             raw_ptrs.difference(&global_locals_set).copied().collect();
+
         let constructors = get_cons(self.tcx, def_id);
         let caller_typed = append_fn_with_types(self.tcx, def_id);
         let mut callees_typed = HashSet::new();
@@ -96,12 +99,17 @@ impl<'tcx> UPGAnalysis<'tcx> {
         for con in &constructors {
             cons_typed.insert(append_fn_with_types(self.tcx, *con));
         }
+
+        // Skip processing if the caller is the dummy raw pointer dereference function
         let caller_name = get_fn_name_byid(&def_id);
         if let Some(_) = caller_name.find("__raw_ptr_deref_dummy") {
             return;
         }
+
+        // If the function is entirely safe (no unsafe code, no unsafe callees, no raw pointer dereferences, and no static mutable accesses), skip further analysis
         if check_safety(self.tcx, def_id) == Safety::Safe
             && callees.is_empty()
+            && raw_ptrs.is_empty()
             && static_muts.is_empty()
         {
             return;

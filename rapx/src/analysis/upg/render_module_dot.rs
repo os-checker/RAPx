@@ -118,7 +118,7 @@ impl<'tcx> UPGAnalysis<'tcx> {
             let dot = data.upg_unit_string(&mod_name);
             final_dots.push((mod_name, dot));
         }
-
+        rap_info!("{:?}", final_dots); // Output required for tests; do not change.
         render_dot_graphs(final_dots);
     }
 

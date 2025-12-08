@@ -317,6 +317,8 @@ fn place_has_raw_deref<'tcx>(tcx: TyCtxt<'tcx>, body: &Body<'tcx>, place: &Place
     false
 }
 
+/// Analyzes the MIR of the given function to collect all local variables
+/// that are involved in dereferencing raw pointers (`*const T` or `*mut T`).
 pub fn get_rawptr_deref(tcx: TyCtxt<'_>, def_id: DefId) -> HashSet<Local> {
     let mut raw_ptrs = HashSet::new();
     if tcx.is_mir_available(def_id) {
@@ -396,6 +398,8 @@ alloc1 (static: COUNTER, size: 4, align: 4) {
 
 */
 
+/// Collects pairs of global static variables and their corresponding local variables
+/// within a function's MIR that are assigned from statics.
 pub fn collect_global_local_pairs(tcx: TyCtxt<'_>, def_id: DefId) -> HashMap<DefId, Vec<Local>> {
     let mut globals: HashMap<DefId, Vec<Local>> = HashMap::new();
 
