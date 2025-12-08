@@ -146,7 +146,7 @@ impl Callbacks for RapCallback {
         _compiler: &interface::Compiler,
         krate: &mut ast::Crate,
     ) -> Compilation {
-        preprocess::dummy_ptr_deref::create_dummy_ptr_deref_fn(krate);
+        preprocess::dummy_fns::create_dummy_fns(krate);
         preprocess::ssa_preprocess::create_ssa_struct(krate);
         Compilation::Continue
     }

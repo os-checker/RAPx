@@ -57,9 +57,11 @@ impl<'tcx> UPGAnalysis<'tcx> {
                         let def_id = self.tcx.hir_body_owner_def_id(*body_id).to_def_id();
                         if fn_unsafe | block_unsafe {
                             let callees = get_unsafe_callees(self.tcx, def_id);
-                            let rawptrs = get_rawptr_deref(self.tcx, def_id);
+                            let raw_ptrs = get_rawptr_deref(self.tcx, def_id);
+                            let static_muts = get_static_mut_accesses(self.tcx, def_id);
+                            rap_info!("Static muts: {:?}", static_muts);
                             let constructors = get_cons(self.tcx, def_id);
-                            self.insert_upg(def_id, callees, rawptrs, constructors);
+                            self.insert_upg(def_id, callees, raw_ptrs, constructors);
                         }
                     }
                 }
@@ -82,7 +84,7 @@ impl<'tcx> UPGAnalysis<'tcx> {
         &mut self,
         caller: DefId,
         callees: HashSet<DefId>,
-        rawptrs: HashSet<Local>,
+        raw_ptrs: HashSet<Local>,
         caller_cons: Vec<DefId>,
     ) {
         let caller_typed = append_fn_with_types(self.tcx, caller);
@@ -102,7 +104,7 @@ impl<'tcx> UPGAnalysis<'tcx> {
         let upg = UPGUnit::new(
             caller_typed,
             callees_typed,
-            rawptrs,
+            raw_ptrs,
             cons_typed,
             mut_methods,
         );

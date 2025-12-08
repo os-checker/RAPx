@@ -1,4 +1,4 @@
-pub mod dummy_ptr_deref;
+pub mod dummy_fns;
 pub mod ssa_preprocess;
 
 use rustc_ast::{token::CommentKind, *};

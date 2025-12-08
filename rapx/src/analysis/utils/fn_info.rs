@@ -7,6 +7,7 @@ use crate::analysis::{
     },
 };
 use crate::{rap_debug, rap_warn};
+use rustc_ast::ItemKind;
 use rustc_data_structures::fx::FxHashMap;
 use rustc_hir::{
     Attribute, ImplItemKind, Safety,
@@ -14,14 +15,16 @@ use rustc_hir::{
     def_id::{CrateNum, DefId, DefIndex},
 };
 use rustc_middle::{
+    hir::place::PlaceBase,
     mir::{
-        BasicBlock, BinOp, Body, Local, Operand, Place, ProjectionElem, Rvalue, StatementKind,
-        Terminator, TerminatorKind,
+        BasicBlock, BinOp, Body, Local, Operand, Place, PlaceElem, PlaceRef, ProjectionElem,
+        Rvalue, StatementKind, Terminator, TerminatorKind,
     },
     ty,
-    ty::{AssocKind, Mutability, Ty, TyCtxt, TyKind},
+    ty::{AssocKind, ConstKind, Mutability, Ty, TyCtxt, TyKind},
 };
 use rustc_span::{def_id::LocalDefId, kw, sym};
+use serde::de;
 use std::{
     collections::{HashMap, HashSet},
     fmt::Debug,
@@ -325,10 +328,13 @@ pub fn get_rawptr_deref(tcx: TyCtxt<'_>, def_id: DefId) -> HashSet<Local> {
                         raw_ptrs.insert(lhs.local);
                     }
                     if let Rvalue::Use(op) = rhs {
-                        if let Operand::Copy(place) | Operand::Move(place) = op {
-                            if place_has_raw_deref(tcx, &body, place) {
-                                raw_ptrs.insert(place.local);
+                        match op {
+                            Operand::Copy(place) | Operand::Move(place) => {
+                                if place_has_raw_deref(tcx, &body, place) {
+                                    raw_ptrs.insert(place.local);
+                                }
                             }
+                            _ => {}
                         }
                     }
                     if let Rvalue::Ref(_, _, place) = rhs {
@@ -338,9 +344,179 @@ pub fn get_rawptr_deref(tcx: TyCtxt<'_>, def_id: DefId) -> HashSet<Local> {
                     }
                 }
             }
+            if let Some(terminator) = &bb.terminator {
+                match &terminator.kind {
+                    rustc_middle::mir::TerminatorKind::Call { args, .. } => {
+                        for arg in args {
+                            match arg.node {
+                                Operand::Copy(place) | Operand::Move(place) => {
+                                    if place_has_raw_deref(tcx, &body, &place) {
+                                        raw_ptrs.insert(place.local);
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
         }
     }
     raw_ptrs
+}
+
+/* Example mir of static mutable access.
+
+static mut COUNTER: i32 = {
+    let mut _0: i32;
+
+    bb0: {
+        _0 = const 0_i32;
+        return;
+    }
+}
+
+fn main() -> () {
+    let mut _0: ();
+    let mut _1: *mut i32;
+
+    bb0: {
+        StorageLive(_1);
+        _1 = const {alloc1: *mut i32};
+        (*_1) = const 1_i32;
+        StorageDead(_1);
+        return;
+    }
+}
+
+alloc1 (static: COUNTER, size: 4, align: 4) {
+    00 00 00 00                                     │ ....
+}
+
+*/
+
+fn place_is_static_mut<'tcx>(
+    tcx: ty::TyCtxt<'tcx>,
+    body: &Body<'tcx>,
+    place: PlaceRef<'tcx>,
+    static_muts: &HashSet<(DefId, Local)>,
+) -> bool {
+    if static_muts.is_empty() {
+        return false;
+    }
+    if static_muts
+        .iter()
+        .any(|(_def_id, local)| *local == place.local)
+        && place.as_local().is_none()
+    {
+        for (place_ref, proj) in place.iter_projections() {
+            match proj {
+                PlaceElem::Deref => return true,
+                _ => {}
+            }
+        }
+    }
+    return false;
+}
+
+pub fn collect_global_local_pairs(tcx: TyCtxt<'_>, def_id: DefId) -> HashSet<(DefId, Local)> {
+    let mut globals = HashSet::new();
+
+    if !tcx.is_mir_available(def_id) {
+        return globals;
+    }
+
+    let body = tcx.optimized_mir(def_id);
+
+    for bb in body.basic_blocks.iter() {
+        for stmt in &bb.statements {
+            if let StatementKind::Assign(box (lhs, rhs)) = &stmt.kind {
+                match rhs {
+                    Rvalue::Use(op) => match op {
+                        Operand::Constant(box (cons_op)) => {
+                            if let Some(def_id) = cons_op.check_static_ptr(tcx) {
+                                globals.insert((def_id, lhs.local));
+                            }
+                        }
+                        _ => {}
+                    },
+                    _ => {}
+                }
+            }
+        }
+    }
+    globals
+}
+
+pub fn get_static_mut_accesses(tcx: TyCtxt<'_>, def_id: DefId) -> HashSet<Local> {
+    let static_muts = collect_global_local_pairs(tcx, def_id);
+    let mut globals = HashSet::new();
+
+    if !tcx.is_mir_available(def_id) {
+        return globals;
+    }
+
+    let body = tcx.optimized_mir(def_id);
+
+    for bb in body.basic_blocks.iter() {
+        for stmt in &bb.statements {
+            if let StatementKind::Assign(box (lhs, rhs)) = &stmt.kind {
+                if place_is_static_mut(tcx, body, lhs.as_ref(), &static_muts) {
+                    globals.insert(lhs.local);
+                }
+
+                // RHS
+                match rhs {
+                    Rvalue::Use(op) => match op {
+                        Operand::Copy(place) | Operand::Move(place) => {
+                            if place_is_static_mut(tcx, body, place.as_ref(), &static_muts) {
+                                globals.insert(place.local);
+                            }
+                        }
+                        _ => {}
+                    },
+
+                    Rvalue::Ref(_, _, place) => {
+                        if place_is_static_mut(tcx, body, place.as_ref(), &static_muts) {
+                            globals.insert(place.local);
+                        }
+                    }
+
+                    _ => {}
+                }
+            }
+        }
+
+        // ---------------------------------------
+        // Terminators
+        // ---------------------------------------
+        if let Some(term) = &bb.terminator {
+            if let TerminatorKind::Call {
+                args, destination, ..
+            } = &term.kind
+            {
+                // args
+                for arg in args {
+                    match &arg.node {
+                        Operand::Copy(place) | Operand::Move(place) => {
+                            if place_is_static_mut(tcx, body, place.as_ref(), &static_muts) {
+                                globals.insert(place.local);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+
+                // destination
+                if place_is_static_mut(tcx, body, destination.as_ref(), &static_muts) {
+                    globals.insert(destination.local);
+                }
+            }
+        }
+    }
+
+    globals
 }
 
 pub fn get_unsafe_callees(tcx: TyCtxt<'_>, def_id: DefId) -> HashSet<DefId> {
