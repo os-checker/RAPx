@@ -69,9 +69,10 @@ impl<'tcx> UPGAnalysis<'tcx> {
                 module_data.add_edge(unit.caller.def_id, callee.def_id, UPGEdge::CallerToCallee);
             }
 
-            if !unit.rawptrs.is_empty() {
-                let all_rawptrs = unit
-                    .rawptrs
+            rap_debug!("raw ptrs: {:?}", unit.raw_ptrs);
+            if !unit.raw_ptrs.is_empty() {
+                let all_raw_ptrs = unit
+                    .raw_ptrs
                     .iter()
                     .map(|p| format!("{:?}", p))
                     .collect::<Vec<_>>()
@@ -84,7 +85,7 @@ impl<'tcx> UPGAnalysis<'tcx> {
                         module_data.add_node(
                             self.tcx,
                             rawptr_deref_fn,
-                            Some(format!("Raw ptr deref: {}", all_rawptrs)),
+                            Some(format!("Raw ptr deref: {}", all_raw_ptrs)),
                         );
                         module_data.add_edge(
                             unit.caller.def_id,
@@ -96,6 +97,13 @@ impl<'tcx> UPGAnalysis<'tcx> {
                         rap_info!("fail to find the dummy ptr deref id.");
                     }
                 }
+            }
+
+            rap_debug!("static muts: {:?}", unit.static_muts);
+            for def_id in &unit.static_muts {
+                let node = FnInfo::new(*def_id, Safety::Unsafe, FnKind::Intrinsic);
+                module_data.add_node(self.tcx, node, None);
+                module_data.add_edge(unit.caller.def_id, *def_id, UPGEdge::CallerToCallee);
             }
         };
 

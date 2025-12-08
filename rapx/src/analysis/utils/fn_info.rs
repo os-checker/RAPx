@@ -396,32 +396,8 @@ alloc1 (static: COUNTER, size: 4, align: 4) {
 
 */
 
-fn place_is_static_mut<'tcx>(
-    tcx: ty::TyCtxt<'tcx>,
-    body: &Body<'tcx>,
-    place: PlaceRef<'tcx>,
-    static_muts: &HashSet<(DefId, Local)>,
-) -> bool {
-    if static_muts.is_empty() {
-        return false;
-    }
-    if static_muts
-        .iter()
-        .any(|(_def_id, local)| *local == place.local)
-        && place.as_local().is_none()
-    {
-        for (place_ref, proj) in place.iter_projections() {
-            match proj {
-                PlaceElem::Deref => return true,
-                _ => {}
-            }
-        }
-    }
-    return false;
-}
-
-pub fn collect_global_local_pairs(tcx: TyCtxt<'_>, def_id: DefId) -> HashSet<(DefId, Local)> {
-    let mut globals = HashSet::new();
+pub fn collect_global_local_pairs(tcx: TyCtxt<'_>, def_id: DefId) -> HashMap<DefId, Vec<Local>> {
+    let mut globals: HashMap<DefId, Vec<Local>> = HashMap::new();
 
     if !tcx.is_mir_available(def_id) {
         return globals;
@@ -432,85 +408,10 @@ pub fn collect_global_local_pairs(tcx: TyCtxt<'_>, def_id: DefId) -> HashSet<(De
     for bb in body.basic_blocks.iter() {
         for stmt in &bb.statements {
             if let StatementKind::Assign(box (lhs, rhs)) = &stmt.kind {
-                match rhs {
-                    Rvalue::Use(op) => match op {
-                        Operand::Constant(box (cons_op)) => {
-                            if let Some(def_id) = cons_op.check_static_ptr(tcx) {
-                                globals.insert((def_id, lhs.local));
-                            }
-                        }
-                        _ => {}
-                    },
-                    _ => {}
-                }
-            }
-        }
-    }
-    globals
-}
-
-pub fn get_static_mut_accesses(tcx: TyCtxt<'_>, def_id: DefId) -> HashSet<Local> {
-    let static_muts = collect_global_local_pairs(tcx, def_id);
-    let mut globals = HashSet::new();
-
-    if !tcx.is_mir_available(def_id) {
-        return globals;
-    }
-
-    let body = tcx.optimized_mir(def_id);
-
-    for bb in body.basic_blocks.iter() {
-        for stmt in &bb.statements {
-            if let StatementKind::Assign(box (lhs, rhs)) = &stmt.kind {
-                if place_is_static_mut(tcx, body, lhs.as_ref(), &static_muts) {
-                    globals.insert(lhs.local);
-                }
-
-                // RHS
-                match rhs {
-                    Rvalue::Use(op) => match op {
-                        Operand::Copy(place) | Operand::Move(place) => {
-                            if place_is_static_mut(tcx, body, place.as_ref(), &static_muts) {
-                                globals.insert(place.local);
-                            }
-                        }
-                        _ => {}
-                    },
-
-                    Rvalue::Ref(_, _, place) => {
-                        if place_is_static_mut(tcx, body, place.as_ref(), &static_muts) {
-                            globals.insert(place.local);
-                        }
+                if let Rvalue::Use(Operand::Constant(c)) = rhs {
+                    if let Some(static_def_id) = c.check_static_ptr(tcx) {
+                        globals.entry(static_def_id).or_default().push(lhs.local);
                     }
-
-                    _ => {}
-                }
-            }
-        }
-
-        // ---------------------------------------
-        // Terminators
-        // ---------------------------------------
-        if let Some(term) = &bb.terminator {
-            if let TerminatorKind::Call {
-                args, destination, ..
-            } = &term.kind
-            {
-                // args
-                for arg in args {
-                    match &arg.node {
-                        Operand::Copy(place) | Operand::Move(place) => {
-                            if place_is_static_mut(tcx, body, place.as_ref(), &static_muts) {
-                                globals.insert(place.local);
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-
-                // destination
-                if place_is_static_mut(tcx, body, destination.as_ref(), &static_muts) {
-                    globals.insert(destination.local);
                 }
             }
         }

@@ -52,7 +52,8 @@ impl fmt::Display for UPGEdge {
 pub struct UPGUnit {
     pub caller: FnInfo,
     pub callees: HashSet<FnInfo>,
-    pub rawptrs: HashSet<Local>,
+    pub raw_ptrs: HashSet<Local>,
+    pub static_muts: HashSet<DefId>,
     pub caller_cons: HashSet<FnInfo>,
     pub mut_methods: Vec<DefId>,
 }
@@ -61,14 +62,16 @@ impl UPGUnit {
     pub fn new(
         caller: FnInfo,
         callees: HashSet<FnInfo>,
-        rawptrs: HashSet<Local>,
+        raw_ptrs: HashSet<Local>,
+        static_muts: HashSet<DefId>,
         caller_cons: HashSet<FnInfo>,
         mut_methods: Vec<DefId>,
     ) -> Self {
         Self {
             caller,
             callees,
-            rawptrs,
+            raw_ptrs,
+            static_muts,
             caller_cons,
             mut_methods,
         }

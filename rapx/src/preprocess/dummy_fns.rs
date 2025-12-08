@@ -60,8 +60,8 @@ fn make_dummy_fn(ident_name: &str) -> Box<Item> {
 
 pub(crate) fn create_dummy_fns(krate: &mut Crate) {
     let raw_ptr_fn = make_dummy_fn("__raw_ptr_deref_dummy");
-    let static_mut_fn = make_dummy_fn("__static_mut_deref_dummy");
+    //let static_mut_fn = make_dummy_fn("__static_mut_deref_dummy");
 
     krate.items.push(raw_ptr_fn);
-    krate.items.push(static_mut_fn);
+    //krate.items.push(static_mut_fn);
 }
