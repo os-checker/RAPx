@@ -12,7 +12,7 @@ fn make_dummy_fn_sig() -> FnSig {
     FnSig {
         decl: Box::new(fn_decl),
         header: FnHeader {
-            safety: Safety::Unsafe(DUMMY_SP),
+            safety: Safety::Default,
             constness: Const::No,
             ext: Extern::None,
             coroutine_kind: None,
