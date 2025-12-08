@@ -569,22 +569,6 @@ where
     }
 }
 
-// pub fn get_all_std_unsafe_chains(tcx: TyCtxt, def_id: DefId) -> Vec<String> {
-//     let mut results = Vec::new();
-//     let body = tcx.optimized_mir(def_id);
-//     let bb_len = body.basic_blocks.len();
-//     for i in 0..bb_len {
-//         let callees = match_std_unsafe_chains_callee(
-//             tcx,
-//             body.basic_blocks[BasicBlock::from_usize(i)]
-//                 .clone()
-//                 .terminator(),
-//         );
-//         results.extend(callees);
-//     }
-//     results
-// }
-
 pub fn match_std_unsafe_chains_callee(tcx: TyCtxt<'_>, terminator: &Terminator<'_>) -> Vec<String> {
     let mut results = Vec::new();
     if let TerminatorKind::Call { func, .. } = &terminator.kind {

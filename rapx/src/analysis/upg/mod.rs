@@ -7,7 +7,10 @@ pub mod render_module_dot;
 pub mod std_upg;
 pub mod upg_unit;
 
-use crate::analysis::utils::{draw_dot::render_dot_graphs, fn_info::*};
+use crate::{
+    utils::source::get_fn_name_byid,
+    analysis::utils::{draw_dot::render_dot_graphs, fn_info::*},
+};
 use fn_collector::FnCollector;
 use hir_visitor::ContainsUnsafe;
 use rustc_hir::{Safety, def_id::DefId};
@@ -92,6 +95,10 @@ impl<'tcx> UPGAnalysis<'tcx> {
         let mut cons_typed = HashSet::new();
         for con in &constructors {
             cons_typed.insert(append_fn_with_types(self.tcx, *con));
+        }
+        let caller_name = get_fn_name_byid(&def_id);
+        if let Some(_) = caller_name.find("__raw_ptr_deref_dummy") {
+            return;
         }
         if check_safety(self.tcx, def_id) == Safety::Safe
             && callees.is_empty()
