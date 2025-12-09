@@ -14,18 +14,6 @@ use rustc_middle::{
 };
 use rustc_span::symbol::Symbol;
 use std::collections::{HashMap, HashSet};
-
-// use std::path::PathBuf;
-// // use tracing::{debug, error, info, warn};
-// use rustc_target::abi::FieldIdx;
-// use std::borrow::Borrow;
-// use rustc_index::bit_set::BitSet;
-// use rustc_index::IndexSlice;
-// use rustc_middle::mir::visit::*;
-// use rustc_middle::mir::visit::*;
-// use rustc_middle::mir::*;
-// use rustc_index::IndexVec;
-// use super::Replacer::*;
 pub struct PhiPlaceholder;
 pub struct SSATransformer<'tcx> {
     pub tcx: TyCtxt<'tcx>,
@@ -44,6 +32,7 @@ pub struct SSATransformer<'tcx> {
     pub essa_statements: HashMap<*const Statement<'tcx>, bool>,
     pub phi_def_id: DefId,
     pub essa_def_id: DefId,
+    pub ref_local_map: HashMap<Local, Local>,
     pub places_map: HashMap<Place<'tcx>, HashSet<Place<'tcx>>>,
     pub ssa_locals_map: HashMap<Place<'tcx>, HashSet<Place<'tcx>>>,
 }
@@ -99,19 +88,6 @@ impl<'tcx> SSATransformer<'tcx> {
             skipped.extend(arg_count + 1..len + 1);
             // skipped.insert(0); // Skip the return place
         }
-        // let phi_def_id = tcx.type_of(tcx.local_def_id_to_hir_id(def_id).owner.to_def_id());
-        // print!("phi_def_id: {:?}\n", def_id);
-        // let phi_defid = Self::find_phi_placeholder(tcx, "RAP-interval-demo");
-        // if let Some(def_id) = phi_defid {
-        //     print!("phi_def_id: {:?}\n", def_id);
-        // } else {
-        //     print!("phi_def_id not found\n");
-        // }
-        // let phi_ty = tcx.type_of(def_id).skip_binder();
-        // print!("phi_ty: {:?}\n", phi_ty);
-        // let crate_num: CrateNum = CrateNum::new(10); // LOCAL_CRATE 是当前 crate，或者用 CrateNum::new(0)
-        // let def_index: DefIndex = CRATE_DEF_INDEX; // 这通常是 0，也可以用 DefIndex::from_usize(123)
-        // let my_def_id = DefId { krate: crate_num, index: def_index };
 
         SSATransformer {
             tcx,
@@ -130,6 +106,7 @@ impl<'tcx> SSATransformer<'tcx> {
             essa_statements: HashMap::default(),
             phi_def_id: ssa_def_id,
             essa_def_id: essa_def_id,
+            ref_local_map: HashMap::default(),
             places_map: HashMap::default(),
             ssa_locals_map: HashMap::default(),
         }
