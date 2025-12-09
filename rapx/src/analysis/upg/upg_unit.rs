@@ -6,7 +6,7 @@ use petgraph::{
     graph::{DiGraph, EdgeReference, NodeIndex},
 };
 use rustc_hir::{Safety, def_id::DefId};
-use rustc_middle::{mir::Local, ty::TyCtxt};
+use rustc_middle::mir::Local;
 use std::{collections::HashSet, fmt::Write};
 
 #[derive(Debug, Clone)]
@@ -108,22 +108,6 @@ impl UPGUnit {
         }
     }
 
-    pub fn get_node_ty(node: FnInfo) -> UPGNode {
-        match node.fn_safety {
-            Safety::Unsafe => match node.fn_kind {
-                FnKind::Constructor => UPGNode::UnsafeFn(node.def_id, "septagon".to_string()),
-                FnKind::Method => UPGNode::UnsafeFn(node.def_id, "ellipse".to_string()),
-                FnKind::Fn => UPGNode::UnsafeFn(node.def_id, "box".to_string()),
-                FnKind::Intrinsic => UPGNode::UnsafeFn(node.def_id, "box".to_string()),
-            },
-            Safety::Safe => match node.fn_kind {
-                FnKind::Constructor => UPGNode::SafeFn(node.def_id, "septagon".to_string()),
-                FnKind::Method => UPGNode::SafeFn(node.def_id, "ellipse".to_string()),
-                FnKind::Fn => UPGNode::SafeFn(node.def_id, "box".to_string()),
-                FnKind::Intrinsic => UPGNode::SafeFn(node.def_id, "box".to_string()),
-            },
-        }
-    }
 
     pub fn generate_dot_str(&self) -> String {
         let mut graph: Graph<UPGNode, UPGEdge> = DiGraph::new();
@@ -160,7 +144,7 @@ impl UPGUnit {
                 }
             };
 
-        let caller_node = graph.add_node(Self::get_node_ty(self.caller));
+        let caller_node = graph.add_node(UPGNode::from(self.caller));
         if !self.caller_cons.is_empty() {
             let cons_labels: Vec<String> = self
                 .caller_cons
@@ -186,9 +170,9 @@ impl UPGUnit {
 
         /*
         for (callee, cons) in &self.callee_cons_pair {
-            let callee_node = graph.add_node(Self::get_node_ty(*callee));
+            let callee_node = graph.add_node(Self::get_node(*callee));
             for callee_cons in cons {
-                let callee_cons_node = graph.add_node(Self::get_node_ty(*callee_cons));
+                let callee_cons_node = graph.add_node(Self::get_node(*callee_cons));
                 graph.add_edge(callee_cons_node, callee_node, UPGEdge::ConsToMethod);
             }
             graph.add_edge(caller_node, callee_node, UPGEdge::CallerToCallee);
@@ -206,35 +190,5 @@ impl UPGUnit {
         write!(dot_str, "{}", dot).unwrap();
         // println!("{}", dot_str);
         dot_str
-    }
-
-    pub fn print_self(&self, tcx: TyCtxt<'_>) {
-        let caller_sp = get_sp(tcx, self.caller.def_id);
-        let caller_label: Vec<_> = caller_sp.clone().into_iter().collect();
-
-        let mut combined_callee_sp = HashSet::new();
-        let combined_labels: Vec<_> = combined_callee_sp.clone().into_iter().collect();
-        println!(
-            "Caller: {:?}.\n--Caller's constructors: {:?}.\n--SP labels: {:?}.",
-            get_cleaned_def_path_name(tcx, self.caller.def_id),
-            self.caller_cons
-                .iter()
-                .filter(|cons| cons.fn_safety == Safety::Unsafe)
-                .map(|node_type| get_cleaned_def_path_name(tcx, node_type.def_id))
-                .collect::<Vec<_>>(),
-            caller_label
-        );
-        for callee in &self.callees {
-            let callee_sp = get_sp(tcx, callee.def_id);
-            combined_callee_sp.extend(callee_sp); // Merge sp of each callee
-        }
-        println!(
-            "Callee: {:?}.\n--Combined Callee Labels: {:?}",
-            self.callees
-                .iter()
-                .map(|callee| get_cleaned_def_path_name(tcx, callee.def_id))
-                .collect::<Vec<_>>(),
-            combined_labels
-        );
     }
 }

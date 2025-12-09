@@ -4,10 +4,10 @@ use std::{
 };
 
 use crate::{
-    analysis::{upg::UPGUnit, utils::fn_info::*},
+    analysis::utils::fn_info::*,
     utils::source::get_adt_name,
 };
-use rustc_hir::def_id::DefId;
+use rustc_hir::{def_id::DefId, Safety};
 use rustc_middle::ty::TyCtxt;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -23,6 +23,25 @@ pub enum UPGEdge {
     CallerToCallee,
     ConsToMethod,
     MutToCaller,
+}
+
+impl UPGNode {
+    pub fn from(node: FnInfo) -> Self {
+        match node.fn_safety {
+            Safety::Unsafe => match node.fn_kind {
+                FnKind::Constructor => UPGNode::UnsafeFn(node.def_id, "box".to_string()),
+                FnKind::Method => UPGNode::UnsafeFn(node.def_id, "ellipse".to_string()),
+                FnKind::Fn => UPGNode::UnsafeFn(node.def_id, "box".to_string()),
+                FnKind::Intrinsic => UPGNode::UnsafeFn(node.def_id, "box".to_string()),
+            },
+            Safety::Safe => match node.fn_kind {
+                FnKind::Constructor => UPGNode::SafeFn(node.def_id, "box".to_string()),
+                FnKind::Method => UPGNode::SafeFn(node.def_id, "ellipse".to_string()),
+                FnKind::Fn => UPGNode::SafeFn(node.def_id, "box".to_string()),
+                FnKind::Intrinsic => UPGNode::SafeFn(node.def_id, "box".to_string()),
+            },
+        }
+    }
 }
 
 impl fmt::Display for UPGNode {
@@ -83,7 +102,7 @@ impl UPGraph {
                     )
                 }
             } else {
-                let upg_node = UPGUnit::get_node_ty(node);
+                let upg_node = UPGNode::from(node);
                 Self::node_to_dot_attr(&upg_node)
             };
 
@@ -147,6 +166,8 @@ impl UPGraph {
         writeln!(dot, "}}").unwrap();
         dot
     }
+
+
     fn node_to_dot_attr(node: &UPGNode) -> String {
         match node {
             UPGNode::SafeFn(def_id, shape) => {

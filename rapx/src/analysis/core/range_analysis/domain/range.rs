@@ -2,6 +2,7 @@
 #![allow(unused_variables)]
 #![allow(dead_code)]
 #![allow(unused_assignments)]
+#![allow(irrefutable_let_patterns)]
 use std::{default, fmt};
 
 use num_traits::{Bounded, Num, Zero};

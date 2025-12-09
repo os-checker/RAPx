@@ -6,6 +6,7 @@ pub mod hir_visitor;
 pub mod std_upg;
 pub mod upg_graph;
 pub mod upg_unit;
+pub mod draw_dot;
 
 use crate::{
     analysis::utils::{draw_dot::render_dot_graphs, fn_info::*},
@@ -67,16 +68,6 @@ impl<'tcx> UPGAnalysis<'tcx> {
                 self.generate_graph_dots();
             }
         }
-    }
-
-    pub fn render_dot(&mut self) {
-        let mut dot_strs = Vec::new();
-        for upg in &self.upgs {
-            let dot_str = upg.generate_dot_str();
-            let caller_name = get_cleaned_def_path_name(self.tcx, upg.caller.def_id);
-            dot_strs.push((caller_name, dot_str));
-        }
-        render_dot_graphs(dot_strs);
     }
 
     pub fn insert_upg(&mut self, def_id: DefId) {
@@ -236,4 +227,6 @@ impl<'tcx> UPGAnalysis<'tcx> {
         rap_info!("{:?}", final_dots); // Output required for tests; do not change.
         render_dot_graphs(final_dots);
     }
+
+
 }
