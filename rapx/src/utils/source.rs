@@ -1,15 +1,11 @@
-use rustc_hir::{self, Node::*};
+use rustc_hir::{self, Node::*, def::DefKind};
 use rustc_middle::ty::TyCtxt;
 use rustc_span::{
     FileName, FileNameDisplayPreference,
     def_id::{CrateNum, DefId},
     symbol::Symbol,
 };
-/*
-extern crate rustc_hir;
-extern crate rustc_middle;
-extern crate rustc_span;
-*/
+
 pub fn get_crate_num<'tcx>(tcx: TyCtxt<'tcx>, name: &str) -> Option<CrateNum> {
     let sym = Symbol::intern(name);
     tcx.crates(())
@@ -91,14 +87,47 @@ fn convert_filename(filename: FileName) -> String {
 }
 
 pub fn get_module_name(tcx: TyCtxt, def_id: DefId) -> String {
-    let tcx = tcx;
-    let parent_mod = tcx.parent_module_from_def_id(def_id.expect_local());
-    let mod_def_id = parent_mod.to_def_id();
+    // --- external items ---
+    if !def_id.is_local() {
+        return tcx.def_path_str(def_id);
+    }
 
-    let path = tcx.def_path_str(mod_def_id);
+    let local = def_id.as_local().unwrap();
+    let mod_local = tcx.parent_module_from_def_id(local);
+    let mod_id = mod_local.to_def_id();
+    let path = tcx.def_path_str(mod_id);
+
     if path.is_empty() {
-        "root_module".to_string()
+        "default".to_string()
     } else {
         path
     }
+}
+
+pub fn get_adt_name(tcx: TyCtxt<'_>, def_id: DefId) -> String {
+    match tcx.def_kind(def_id) {
+        DefKind::Struct | DefKind::Enum | DefKind::Union => {
+            let raw_name = tcx.type_of(def_id).skip_binder().to_string();
+            return raw_name
+                .split('<')
+                .next()
+                .unwrap_or(&raw_name)
+                .trim()
+                .to_string();
+        }
+        _ => {}
+    }
+    if let Some(assoc_item) = tcx.opt_associated_item(def_id) {
+        if let Some(impl_id) = assoc_item.impl_container(tcx) {
+            let ty = tcx.type_of(impl_id).skip_binder();
+            let raw_name = ty.to_string();
+            return raw_name
+                .split('<')
+                .next()
+                .unwrap_or(&raw_name)
+                .trim()
+                .to_string();
+        }
+    }
+    "Free_Functions".to_string()
 }

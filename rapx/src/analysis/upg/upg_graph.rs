@@ -3,8 +3,11 @@ use std::{
     fmt::{self, Write},
 };
 
-use crate::analysis::{upg::UPGUnit, utils::fn_info::*};
-use rustc_hir::{def::DefKind, def_id::DefId};
+use crate::{
+    analysis::{upg::UPGUnit, utils::fn_info::*},
+    utils::source::get_adt_name,
+};
+use rustc_hir::def_id::DefId;
 use rustc_middle::ty::TyCtxt;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -63,7 +66,7 @@ impl UPGraph {
     }
 
     pub fn add_node(&mut self, tcx: TyCtxt<'_>, node: FnInfo, custom_label: Option<String>) {
-        let adt_name = self.get_adt_name(tcx, node.def_id);
+        let adt_name = get_adt_name(tcx, node.def_id);
         self.structs.entry(adt_name).or_default().insert(node);
 
         if !self.nodes.contains_key(&node.def_id) || custom_label.is_some() {
@@ -81,7 +84,7 @@ impl UPGraph {
                 }
             } else {
                 let upg_node = UPGUnit::get_node_ty(node);
-                self.node_to_dot_attr(tcx, &upg_node)
+                Self::node_to_dot_attr(&upg_node)
             };
 
             self.nodes.insert(node.def_id, attr);
@@ -93,47 +96,6 @@ impl UPGraph {
             return;
         }
         self.edges.insert((from, to, edge_type));
-    }
-
-    pub fn get_adt_name(&self, tcx: TyCtxt<'_>, def_id: DefId) -> String {
-        match tcx.def_kind(def_id) {
-            DefKind::Struct | DefKind::Enum | DefKind::Union => {
-                let raw_name = tcx.type_of(def_id).skip_binder().to_string();
-                return raw_name
-                    .split('<')
-                    .next()
-                    .unwrap_or(&raw_name)
-                    .trim()
-                    .to_string();
-            }
-            _ => {}
-        }
-        if let Some(assoc_item) = tcx.opt_associated_item(def_id) {
-            if let Some(impl_id) = assoc_item.impl_container(tcx) {
-                let ty = tcx.type_of(impl_id).skip_binder();
-                let raw_name = ty.to_string();
-                return raw_name
-                    .split('<')
-                    .next()
-                    .unwrap_or(&raw_name)
-                    .trim()
-                    .to_string();
-            }
-        }
-        "Free_Functions".to_string()
-    }
-
-    fn node_to_dot_attr(&self, _tcx: TyCtxt<'_>, node: &UPGNode) -> String {
-        match node {
-            UPGNode::SafeFn(def_id, shape) => {
-                format!("label=\"{:?}\", color=black, shape={:?}", def_id, shape)
-            }
-            UPGNode::UnsafeFn(def_id, shape) => {
-                let label = format!("{:?}", def_id);
-                format!("label=\"{}\", shape={:?}, color=red", label, shape)
-            }
-            _ => "label=\"Unknown\"".to_string(),
-        }
     }
 
     pub fn upg_unit_string(&self, module_name: &str) -> String {
@@ -184,5 +146,17 @@ impl UPGraph {
 
         writeln!(dot, "}}").unwrap();
         dot
+    }
+    fn node_to_dot_attr(node: &UPGNode) -> String {
+        match node {
+            UPGNode::SafeFn(def_id, shape) => {
+                format!("label=\"{:?}\", color=black, shape={:?}", def_id, shape)
+            }
+            UPGNode::UnsafeFn(def_id, shape) => {
+                let label = format!("{:?}", def_id);
+                format!("label=\"{}\", shape={:?}, color=red", label, shape)
+            }
+            _ => "label=\"Unknown\"".to_string(),
+        }
     }
 }
