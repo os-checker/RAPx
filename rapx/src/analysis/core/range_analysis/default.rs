@@ -29,6 +29,9 @@ use std::{
     cell::RefCell,
     collections::{HashMap, HashSet},
     fmt::Debug,
+    fs::{self, File},
+    io::Write,
+    path::PathBuf,
     rc::Rc,
 };
 
@@ -152,17 +155,31 @@ where
         let ssa_def_id = self.ssa_def_id.expect("SSA definition ID is not set");
         let essa_def_id = self.essa_def_id.expect("ESSA definition ID is not set");
         let mut cg: ConstraintGraph<'tcx, T> =
-            ConstraintGraph::new(def_id, essa_def_id, ssa_def_id);
+            ConstraintGraph::new(body_mut_ref, self.tcx, def_id, essa_def_id, ssa_def_id);
         cg.build_graph(body_mut_ref);
         cg.build_nuutila(false);
         // cg.rap_print_vars();
         // cg.rap_print_final_vars();
+        let dot_output = cg.to_dot();
         let vars_map = cg.get_vars().clone();
 
         self.cg_map.insert(def_id, Rc::new(RefCell::new(cg)));
         let mut vec = Vec::new();
         vec.push(RefCell::new(vars_map));
         self.vars_map.insert(def_id, vec);
+        let function_name = self.tcx.def_path_str(def_id);
+
+        let dir_path = PathBuf::from("cg_dot");
+        fs::create_dir_all(dir_path.clone()).unwrap();
+        let safe_filename = format!("{}_cg.dot", function_name);
+        let output_path = dir_path.join(format!("{}", safe_filename));
+
+        let mut file = File::create(&output_path).expect("cannot create file");
+        file.write_all(dot_output.as_bytes())
+            .expect("Could not write to file");
+
+        println!("Successfully generated graph.dot");
+        // println!("Run 'dot -Tpng -o graph.png graph.dot' to generate the image.");
     }
 
     fn only_caller_range_analysis(&mut self) {
@@ -184,6 +201,7 @@ where
                     passrunner.run_pass(body_mut_ref, ssa_def_id, essa_def_id);
                     self.body_map.insert(def_id, body);
                     // Print the MIR after SSA/ESSA passes
+                    rap_debug!("{:#?}", body_mut_ref.local_decls);
                     if self.debug {
                         print_diff(self.tcx, body_mut_ref, def_id.into());
                         print_mir_graph(self.tcx, body_mut_ref, def_id.into());
@@ -291,7 +309,8 @@ where
             let mut body = self.tcx.optimized_mir(def_id).clone();
             let body_mut_ref = unsafe { &mut *(&mut body as *mut Body<'tcx>) };
 
-            let mut cg: ConstraintGraph<'tcx, T> = ConstraintGraph::new_without_ssa(def_id);
+            let mut cg: ConstraintGraph<'tcx, T> =
+                ConstraintGraph::new_without_ssa(body_mut_ref, self.tcx, def_id);
             let mut graph = MopGraph::new(self.tcx, def_id);
             graph.solve_scc();
             let paths: Vec<Vec<usize>> = graph.get_all_branch_sub_blocks_paths();
@@ -327,7 +346,8 @@ where
                     let mut body = self.tcx.optimized_mir(def_id).clone();
                     let body_mut_ref = unsafe { &mut *(&mut body as *mut Body<'tcx>) };
 
-                    let mut cg: ConstraintGraph<'tcx, T> = ConstraintGraph::new_without_ssa(def_id);
+                    let mut cg: ConstraintGraph<'tcx, T> =
+                        ConstraintGraph::new_without_ssa(body_mut_ref, self.tcx, def_id);
                     let mut graph = MopGraph::new(self.tcx, def_id);
                     graph.solve_scc();
                     // rap_info!("child_scc: {:?}\n", graph.child_scc);
