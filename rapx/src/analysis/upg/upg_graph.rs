@@ -10,6 +10,14 @@ use crate::{
 use rustc_hir::{def_id::DefId, Safety};
 use rustc_middle::ty::TyCtxt;
 
+use super::upg_unit::UPGUnit;
+use petgraph::{
+    Graph,
+    dot::{Config, Dot},
+    graph::{DiGraph, EdgeReference, NodeIndex},
+};
+
+
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum UPGNode {
     SafeFn(DefId, String),
@@ -179,5 +187,88 @@ impl UPGraph {
             }
             _ => "label=\"Unknown\"".to_string(),
         }
+    }
+
+    pub fn generate_dot_from_upg_unit(upg: &UPGUnit) -> String {
+        let mut graph: Graph<UPGNode, UPGEdge> = DiGraph::new();
+        let get_edge_attr = |_graph: &Graph<UPGNode, UPGEdge>,
+                             edge_ref: EdgeReference<'_, UPGEdge>| {
+            match edge_ref.weight() {
+                UPGEdge::CallerToCallee => "color=black, style=solid",
+                UPGEdge::ConsToMethod => "color=black, style=dotted",
+                UPGEdge::MutToCaller => "color=blue, style=dashed",
+            }
+            .to_owned()
+        };
+        let get_node_attr =
+            |_graph: &Graph<UPGNode, UPGEdge>, node_ref: (NodeIndex, &UPGNode)| match node_ref.1 {
+                UPGNode::SafeFn(def_id, shape) => {
+                    format!("label=\"{:?}\", color=black, shape={:?}", def_id, shape)
+                }
+                UPGNode::UnsafeFn(def_id, shape) => {
+                    let label = format!("{:?}\n ", def_id);
+                    let node_attr = format!("label={:?}, shape={:?}, color=red", label, shape);
+                    node_attr
+                }
+                UPGNode::MergedCallerCons(label) => {
+                    format!(
+                        "label=\"{}\", shape=box, style=filled, fillcolor=lightgrey",
+                        label
+                    )
+                }
+                UPGNode::MutMethods(label) => {
+                    format!(
+                        "label=\"{}\", shape=octagon, style=filled, fillcolor=lightyellow",
+                        label
+                    )
+                }
+            };
+
+        let caller_node = graph.add_node(UPGNode::from(upg.caller));
+        if !upg.caller_cons.is_empty() {
+            let cons_labels: Vec<String> = upg 
+                .caller_cons
+                .iter()
+                .map(|con| format!("{:?}", con.def_id))
+                .collect();
+            let merged_label = format!("Caller Constructors\n{}", cons_labels.join("\n"));
+            let merged_cons_node = graph.add_node(UPGNode::MergedCallerCons(merged_label));
+            graph.add_edge(merged_cons_node, caller_node, UPGEdge::ConsToMethod);
+        }
+
+        if !upg.mut_methods.is_empty() {
+            let mut_method_labels: Vec<String> = upg 
+                .mut_methods
+                .iter()
+                .map(|def_id| format!("{:?}", def_id))
+                .collect();
+            let merged_label = format!("Mutable Methods\n{}", mut_method_labels.join("\n"));
+
+            let mut_methods_node = graph.add_node(UPGNode::MutMethods(merged_label));
+            graph.add_edge(mut_methods_node, caller_node, UPGEdge::MutToCaller);
+        }
+
+        /*
+        for (callee, cons) in &self.callee_cons_pair {
+            let callee_node = graph.add_node(Self::get_node(*callee));
+            for callee_cons in cons {
+                let callee_cons_node = graph.add_node(Self::get_node(*callee_cons));
+                graph.add_edge(callee_cons_node, callee_node, UPGEdge::ConsToMethod);
+            }
+            graph.add_edge(caller_node, callee_node, UPGEdge::CallerToCallee);
+        }
+        */
+        let mut dot_str = String::new();
+        let dot = Dot::with_attr_getters(
+            &graph,
+            // &[Config::NodeNoLabel, Config::EdgeNoLabel],
+            &[Config::NodeNoLabel],
+            &get_edge_attr,
+            &get_node_attr,
+        );
+
+        write!(dot_str, "{}", dot).unwrap();
+        // println!("{}", dot_str);
+        dot_str
     }
 }

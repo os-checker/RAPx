@@ -1,4 +1,4 @@
-use super::{UPGAnalysis};
+use super::{UPGAnalysis, upg_graph::UPGraph};
 use crate::analysis::{
     upg::draw_dot::render_dot_graphs,
     utils::{fn_info::*, show_mir::display_mir}
@@ -11,6 +11,7 @@ use rustc_middle::{
 };
 use rustc_span::Symbol;
 use std::collections::{HashMap, HashSet};
+
 
 impl<'tcx> UPGAnalysis<'tcx> {
     pub fn audit_std_unsafe(&mut self) {
@@ -30,7 +31,7 @@ impl<'tcx> UPGAnalysis<'tcx> {
     pub fn render_dot(&mut self) {
         let mut dot_strs = Vec::new();
         for upg in &self.upgs {
-            let dot_str = upg.generate_dot_str();
+            let dot_str = UPGraph::generate_dot_from_upg_unit(upg);
             let caller_name = get_cleaned_def_path_name(self.tcx, upg.caller.def_id);
             dot_strs.push((caller_name, dot_str));
         }
