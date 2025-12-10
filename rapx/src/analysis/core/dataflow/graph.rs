@@ -132,9 +132,6 @@ impl Graph {
                 PlaceElem::Subslice { .. } => {
                     graph.add_node_edge(src, dst, EdgeOp::SubSlice);
                 }
-                PlaceElem::Subtype(..) => {
-                    graph.add_node_edge(src, dst, EdgeOp::SubType);
-                }
                 _ => {
                     println!("{:?}", place_elem);
                     todo!()
@@ -180,11 +177,6 @@ impl Graph {
                     self.add_node_edge(src, dst, op);
                     self.nodes[dst].ops[seq] = NodeOp::Ref;
                 }
-                Rvalue::Len(place) => {
-                    let src = self.parse_place(place);
-                    self.add_node_edge(src, dst, EdgeOp::Nop);
-                    self.nodes[dst].ops[seq] = NodeOp::Len;
-                }
                 Rvalue::Cast(_cast_kind, operand, _) => {
                     self.add_operand(operand, dst);
                     self.nodes[dst].ops[seq] = NodeOp::Cast;
@@ -229,8 +221,7 @@ impl Graph {
                     self.add_operand(operand, dst);
                     self.nodes[dst].ops[seq] = NodeOp::UnaryOp;
                 }
-                Rvalue::NullaryOp(_, ty) => {
-                    self.add_const_edge(ty.to_string(), ty.to_string(), dst, EdgeOp::Nop);
+                Rvalue::NullaryOp(_) => {
                     self.nodes[dst].ops[seq] = NodeOp::NullaryOp;
                 }
                 Rvalue::ThreadLocalRef(_) => {
@@ -624,8 +615,7 @@ impl Graph {
             | EdgeOp::Field(_)
             | EdgeOp::Index
             | EdgeOp::ConstIndex
-            | EdgeOp::SubSlice
-            | EdgeOp::SubType => DFSStatus::Stop,
+            | EdgeOp::SubSlice => DFSStatus::Stop,
         }
     }
 

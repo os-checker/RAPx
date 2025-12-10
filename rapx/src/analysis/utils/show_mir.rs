@@ -1,4 +1,3 @@
-use crate::rap_info;
 use colorful::{Color, Colorful};
 use rustc_hir::def_id::DefId;
 use rustc_middle::mir::{
@@ -75,7 +74,6 @@ impl<'tcx> Display for StatementKind<'tcx> {
             }
             StatementKind::FakeRead(..) => s += "FakeRead",
             StatementKind::SetDiscriminant { .. } => s += "SetDiscriminant",
-            StatementKind::Deinit(..) => s += "Deinit",
             StatementKind::StorageLive(..) => s += "StorageLive",
             StatementKind::StorageDead(..) => s += "StorageDead",
             StatementKind::Retag(..) => s += "Retag",
@@ -100,7 +98,6 @@ impl<'tcx> Display for Rvalue<'tcx> {
             Rvalue::Repeat(..) => s += "Repeat",
             Rvalue::Ref(..) => s += "Ref",
             Rvalue::ThreadLocalRef(..) => s += "ThreadLocalRef",
-            Rvalue::Len(..) => s += "Len",
             Rvalue::Cast(..) => s += "Cast",
             Rvalue::BinaryOp(..) => s += "BinaryOp",
             Rvalue::NullaryOp(..) => s += "NullaryOp",
