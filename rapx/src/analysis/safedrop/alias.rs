@@ -203,7 +203,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
         // } else {
         //     self.values[lv].alias = self.values[rv].alias.clone();
         // }
-        if lv > self.values.len() || rv > self.values.len() {
+        if lv >= self.values.len() || rv >= self.values.len() {
             return;
         }
         self.union_merge(lv, rv);
