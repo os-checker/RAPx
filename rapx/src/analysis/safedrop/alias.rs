@@ -178,7 +178,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
                         let need_drop = ty.needs_drop(tcx, ty_env);
                         let may_drop = !is_not_drop(tcx, ty);
                         let mut node =
-                            ValueNode::new(new_id, local, need_drop, need_drop || may_drop);
+                            Value::new(new_id, local, need_drop, need_drop || may_drop);
                         node.kind = kind(ty);
                         node.birth = self.values[proj_id].birth;
                         node.field_id = field_idx;
@@ -222,7 +222,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
 
         for field in self.values[rv].fields.clone().into_iter() {
             if !self.values[lv].fields.contains_key(&field.0) {
-                let mut node = ValueNode::new(
+                let mut node = Value::new(
                     self.values.len(),
                     self.values[lv].local,
                     self.values[field.1].need_drop,
@@ -255,7 +255,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
             if self.values[lv].fields.contains_key(&index) == false {
                 let need_drop = ret_alias.lhs_need_drop;
                 let may_drop = ret_alias.lhs_may_drop;
-                let mut node = ValueNode::new(self.values.len(), left_init, need_drop, may_drop);
+                let mut node = Value::new(self.values.len(), left_init, need_drop, may_drop);
                 node.kind = TyKind::RawPtr;
                 node.birth = self.values[lv].birth;
                 node.field_id = *index;
@@ -276,7 +276,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
                 let need_drop = ret_alias.rhs_need_drop;
                 let may_drop = ret_alias.rhs_may_drop;
                 let mut node =
-                    ValueNode::new(self.alias_set.len(), right_init, need_drop, may_drop);
+                    Value::new(self.alias_set.len(), right_init, need_drop, may_drop);
                 node.kind = TyKind::RawPtr;
                 node.birth = self.values[rv].birth;
                 node.field_id = *index;

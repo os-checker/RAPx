@@ -43,7 +43,7 @@ pub struct SafeDropGraph<'tcx> {
     pub tcx: TyCtxt<'tcx>,
     pub span: Span,
     // contains all varibles (including fields) as values.
-    pub values: Vec<ValueNode>,
+    pub values: Vec<Value>,
     // contains all blocks in the CFG
     pub blocks: Vec<SccBlock<'tcx>>,
     pub arg_size: usize,
@@ -83,14 +83,14 @@ impl<'tcx> SafeDropGraph<'tcx> {
         // handle variables
         let locals = &body.local_decls;
         let arg_size = body.arg_count;
-        let mut values = Vec::<ValueNode>::new();
+        let mut values = Vec::<Value>::new();
         let mut alias = Vec::<usize>::new();
         let mut drop_record = Vec::<DropRecord>::new();
         let ty_env = TypingEnv::post_analysis(tcx, def_id);
         for (local, local_decl) in locals.iter_enumerated() {
             let need_drop = local_decl.ty.needs_drop(tcx, ty_env); // the type is drop
             let may_drop = !is_not_drop(tcx, local_decl.ty);
-            let mut node = ValueNode::new(
+            let mut node = Value::new(
                 local.as_usize(),
                 local.as_usize(),
                 need_drop,
@@ -110,36 +110,34 @@ impl<'tcx> SafeDropGraph<'tcx> {
 
         // handle each basicblock
         for i in 0..basicblocks.len() {
-            scc_indices.push(i);
+            scc_indices.push(i); // we temporarily assign the scc id of ith basicblock with i.
             let iter = BasicBlock::from(i);
             let terminator = basicblocks[iter].terminator.clone().unwrap();
             let mut cur_bb = SccBlock::new(i, basicblocks[iter].is_cleanup);
 
             // handle general statements
             for stmt in &basicblocks[iter].statements {
-                /* Assign is a tuple defined as Assign(Box<(Place<'tcx>, Rvalue<'tcx>)>) */
                 let span = stmt.source_info.span;
-                if let StatementKind::Assign(ref assign) = stmt.kind {
-                    let lv_local = assign.0.local.as_usize(); // assign.0 is a Place
-                    let lv = assign.0;
+                if let StatementKind::Assign(box (place, rvalue)) = &stmt.kind {
+                    let lv_place = *place;
+                    let lv_local = place.local.as_usize(); // assign.0 is a Place
                     cur_bb.modified_value.insert(lv_local);
-                    // assign.1 is a Rvalue
-                    match assign.1.clone() {
-                        Rvalue::Use(x) => {
-                            match x {
-                                Operand::Copy(rv) => {
-                                    let rv_local = rv.local.as_usize();
+                    match rvalue.clone() {
+                        Rvalue::Use(operand) => {
+                            match operand {
+                                Operand::Copy(rv_place) => {
+                                    let rv_local = rv_place.local.as_usize();
                                     if values[lv_local].may_drop && values[rv_local].may_drop {
                                         let assign =
-                                            Assignment::new(lv, rv, AssignType::Copy, span);
+                                            Assignment::new(lv_place, rv_place, AssignType::Copy, span);
                                         cur_bb.assignments.push(assign);
                                     }
                                 }
-                                Operand::Move(rv) => {
-                                    let rv_local = rv.local.as_usize();
+                                Operand::Move(rv_place) => {
+                                    let rv_local = rv_place.local.as_usize();
                                     if values[lv_local].may_drop && values[rv_local].may_drop {
                                         let assign =
-                                            Assignment::new(lv, rv, AssignType::Move, span);
+                                            Assignment::new(lv_place, rv_place, AssignType::Move, span);
                                         cur_bb.assignments.push(assign);
                                     }
                                 }
@@ -154,7 +152,6 @@ impl<'tcx> SafeDropGraph<'tcx> {
                                         }
                                         Const::Unevaluated(_unevaluated, _ty) => {}
                                         Const::Val(const_value, _ty) => {
-                                            //if let Some(val) = const_value.try_to_target_usize(tcx) {
                                             if let Some(scalar) = const_value.try_to_scalar_int() {
                                                 let val = scalar.to_uint(scalar.size());
                                                 cur_bb.const_value.push((lv_local, val as usize));
@@ -164,14 +161,14 @@ impl<'tcx> SafeDropGraph<'tcx> {
                                 }
                             }
                         }
-                        Rvalue::Ref(_, _, rv) | Rvalue::RawPtr(_, rv) => {
-                            let rv_local = rv.local.as_usize();
+                        Rvalue::Ref(_, _, rv_place) | Rvalue::RawPtr(_, rv_place) => {
+                            let rv_local = rv_place.local.as_usize();
                             if values[lv_local].may_drop && values[rv_local].may_drop {
-                                let assign = Assignment::new(lv, rv, AssignType::Copy, span);
+                                let assign = Assignment::new(lv_place, rv_place, AssignType::Copy, span);
                                 cur_bb.assignments.push(assign);
                             }
                         }
-                        Rvalue::ShallowInitBox(x, _) => {
+                        Rvalue::ShallowInitBox(operand, _) => {
                             /*
                              * Original ShllowInitBox is a two-level pointer: lvl0 -> lvl1 -> lvl2
                              * Since our alias analysis does not consider multi-level pointer,
@@ -179,7 +176,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
                              */
                             #[allow(clippy::map_entry)]
                             if !values[lv_local].fields.contains_key(&0) {
-                                let mut lvl0 = ValueNode::new(values.len(), lv_local, false, true);
+                                let mut lvl0 = Value::new(values.len(), lv_local, false, true);
                                 lvl0.birth = values[lv_local].birth;
                                 lvl0.field_id = 0;
                                 values[lv_local].fields.insert(0, lvl0.index);
@@ -187,43 +184,43 @@ impl<'tcx> SafeDropGraph<'tcx> {
                                 drop_record.push(drop_record[lv_local]);
                                 values.push(lvl0);
                             }
-                            match x {
-                                Operand::Copy(rv) | Operand::Move(rv) => {
-                                    let rv_local = rv.local.as_usize();
+                            match operand {
+                                Operand::Copy(rv_place) | Operand::Move(rv_place) => {
+                                    let rv_local = rv_place.local.as_usize();
                                     if values[lv_local].may_drop && values[rv_local].may_drop {
                                         let assign =
-                                            Assignment::new(lv, rv, AssignType::InitBox, span);
+                                            Assignment::new(lv_place, rv_place, AssignType::InitBox, span);
                                         cur_bb.assignments.push(assign);
                                     }
                                 }
                                 Operand::Constant(_) => {}
                             }
                         }
-                        Rvalue::Cast(_, x, _) => match x {
-                            Operand::Copy(rv) => {
-                                let rv_local = rv.local.as_usize();
+                        Rvalue::Cast(_, operand, _) => match operand {
+                            Operand::Copy(rv_place) => {
+                                let rv_local = rv_place.local.as_usize();
                                 if values[lv_local].may_drop && values[rv_local].may_drop {
-                                    let assign = Assignment::new(lv, rv, AssignType::Copy, span);
+                                    let assign = Assignment::new(lv_place, rv_place, AssignType::Copy, span);
                                     cur_bb.assignments.push(assign);
                                 }
                             }
-                            Operand::Move(rv) => {
-                                let rv_local = rv.local.as_usize();
+                            Operand::Move(rv_place) => {
+                                let rv_local = rv_place.local.as_usize();
                                 if values[lv_local].may_drop && values[rv_local].may_drop {
-                                    let assign = Assignment::new(lv, rv, AssignType::Move, span);
+                                    let assign = Assignment::new(lv_place, rv_place, AssignType::Move, span);
                                     cur_bb.assignments.push(assign);
                                 }
                             }
                             Operand::Constant(_) => {}
                         },
-                        Rvalue::Aggregate(_, x) => {
-                            for each_x in x {
-                                match each_x {
-                                    Operand::Copy(rv) | Operand::Move(rv) => {
-                                        let rv_local = rv.local.as_usize();
+                        Rvalue::Aggregate(_, operand_vec) => {
+                            for operand in operand_vec {
+                                match operand {
+                                    Operand::Copy(rv_place) | Operand::Move(rv_place) => {
+                                        let rv_local = rv_place.local.as_usize();
                                         if values[lv_local].may_drop && values[rv_local].may_drop {
                                             let assign =
-                                                Assignment::new(lv, rv, AssignType::Copy, span);
+                                                Assignment::new(lv_place, rv_place, AssignType::Copy, span);
                                             cur_bb.assignments.push(assign);
                                         }
                                     }
@@ -231,10 +228,10 @@ impl<'tcx> SafeDropGraph<'tcx> {
                                 }
                             }
                         }
-                        Rvalue::Discriminant(rv) => {
-                            let assign = Assignment::new(lv, rv, AssignType::Variant, span);
+                        Rvalue::Discriminant(rv_place) => {
+                            let assign = Assignment::new(lv_place, rv_place, AssignType::Variant, span);
                             cur_bb.assignments.push(assign);
-                            disc_map.insert(lv_local, rv.local.as_usize());
+                            disc_map.insert(lv_local, rv_place.local.as_usize());
                         }
                         _ => {}
                     }

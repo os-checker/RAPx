@@ -168,7 +168,7 @@ impl<'tcx> MopGraph<'tcx> {
                         let need_drop = ty.needs_drop(self.tcx, ty_env);
                         let may_drop = !is_not_drop(self.tcx, ty);
                         let mut node =
-                            ValueNode::new(new_id, local, need_drop, need_drop || may_drop);
+                            Value::new(new_id, local, need_drop, need_drop || may_drop);
                         node.kind = kind(ty);
                         node.field_id = field_idx;
                         e.insert(node.index);
@@ -210,7 +210,7 @@ impl<'tcx> MopGraph<'tcx> {
 
         for field in self.values[rv].fields.clone().into_iter() {
             if !self.values[lv].fields.contains_key(&field.0) {
-                let mut node = ValueNode::new(
+                let mut node = Value::new(
                     self.values.len(),
                     self.values[lv].local,
                     self.values[field.1].need_drop,
@@ -242,7 +242,7 @@ impl<'tcx> MopGraph<'tcx> {
             if !self.values[lv].fields.contains_key(index) {
                 let need_drop = ret_alias.lhs_need_drop;
                 let may_drop = ret_alias.lhs_may_drop;
-                let mut node = ValueNode::new(self.values.len(), left_init, need_drop, may_drop);
+                let mut node = Value::new(self.values.len(), left_init, need_drop, may_drop);
                 node.kind = TyKind::RawPtr;
                 node.field_id = *index;
                 self.values[lv].fields.insert(*index, node.index);
@@ -258,7 +258,7 @@ impl<'tcx> MopGraph<'tcx> {
             if !self.values[rv].fields.contains_key(index) {
                 let need_drop = ret_alias.rhs_need_drop;
                 let may_drop = ret_alias.rhs_may_drop;
-                let mut node = ValueNode::new(self.values.len(), right_init, need_drop, may_drop);
+                let mut node = Value::new(self.values.len(), right_init, need_drop, may_drop);
                 node.kind = TyKind::RawPtr;
                 node.field_id = *index;
                 self.values[rv].fields.insert(*index, node.index);
@@ -271,7 +271,7 @@ impl<'tcx> MopGraph<'tcx> {
     }
 
     //merge the result of current path to the final result.
-    pub fn merge_results(&mut self, results_nodes: Vec<ValueNode>) {
+    pub fn merge_results(&mut self, results_nodes: Vec<Value>) {
         for node in results_nodes.iter() {
             if node.local <= self.arg_size
                 && (self.union_is_same(node.index, self.alias_set[node.index])
@@ -346,7 +346,7 @@ impl<'tcx> MopGraph<'tcx> {
         }
     }
 
-    pub fn get_field_seq(&self, value: &ValueNode) -> Vec<usize> {
+    pub fn get_field_seq(&self, value: &Value) -> Vec<usize> {
         let mut field_id_seq = vec![];
         let mut node_ref = value;
         while node_ref.field_id != usize::MAX {

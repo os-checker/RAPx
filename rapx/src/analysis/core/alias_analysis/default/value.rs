@@ -2,7 +2,7 @@ use crate::analysis::core::alias_analysis::default::types::TyKind;
 use rustc_data_structures::fx::FxHashMap;
 
 #[derive(Debug, Clone)]
-pub struct ValueNode {
+pub struct Value {
     pub index: usize, // node index; this could be the field of a value.
     pub local: usize, // This is the real local; The range of index is generally larger than local.
     pub need_drop: bool,
@@ -14,9 +14,9 @@ pub struct ValueNode {
     pub fields: FxHashMap<usize, usize>,
 }
 
-impl ValueNode {
+impl Value {
     pub fn new(index: usize, local: usize, need_drop: bool, may_drop: bool) -> Self {
-        ValueNode {
+        Value {
             index,
             local,
             need_drop,

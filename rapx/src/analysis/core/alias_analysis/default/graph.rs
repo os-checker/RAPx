@@ -13,7 +13,7 @@ pub struct MopGraph<'tcx> {
     pub tcx: TyCtxt<'tcx>,
     pub span: Span,
     // contains all varibles (including fields) as values.
-    pub values: Vec<ValueNode>,
+    pub values: Vec<Value>,
     // contains all blocks in the CFG
     pub blocks: Vec<SccBlock<'tcx>>,
     pub arg_size: usize,
@@ -46,13 +46,13 @@ impl<'tcx> MopGraph<'tcx> {
         let body = tcx.optimized_mir(def_id);
         let locals = &body.local_decls;
         let arg_size = body.arg_count;
-        let mut values = Vec::<ValueNode>::new();
+        let mut values = Vec::<Value>::new();
         let mut alias = Vec::<usize>::new();
         let ty_env = TypingEnv::post_analysis(tcx, def_id);
         for (local, local_decl) in locals.iter_enumerated() {
             let need_drop = local_decl.ty.needs_drop(tcx, ty_env); // the type is drop
             let may_drop = !is_not_drop(tcx, local_decl.ty);
-            let mut node = ValueNode::new(
+            let mut node = Value::new(
                 local.as_usize(),
                 local.as_usize(),
                 need_drop,
@@ -146,7 +146,7 @@ impl<'tcx> MopGraph<'tcx> {
                              * We simplify it as: lvl0
                              */
                             if !values[lv_local].fields.contains_key(&0) {
-                                let mut lvl0 = ValueNode::new(values.len(), lv_local, false, true);
+                                let mut lvl0 = Value::new(values.len(), lv_local, false, true);
                                 lvl0.field_id = 0;
                                 values[lv_local].fields.insert(0, lvl0.index);
                                 alias.push(values.len());

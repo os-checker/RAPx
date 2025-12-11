@@ -273,7 +273,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
         }
     }
 
-    pub fn get_field_seq(&self, value: &ValueNode) -> Vec<usize> {
+    pub fn get_field_seq(&self, value: &Value) -> Vec<usize> {
         let mut field_id_seq = vec![];
         let mut node_ref = value;
         while node_ref.field_id != usize::MAX {
