@@ -48,7 +48,6 @@ impl<'tcx> SafeDropGraph<'tcx> {
             self.drop_record[local],
         );
 
-        rap_info!("Alias: {:?}", convert_alias_to_sets(self.alias_set.clone()));
         self.sync_drop_record(idx);
         rap_debug!(
             "after sync drop record: idx: {:?}, local: {:?}, drop_record: {:?}",
@@ -93,7 +92,6 @@ impl<'tcx> SafeDropGraph<'tcx> {
             self.drop_record[idx] = self.drop_record[local];
         }
         let aliases = self.get_alias_set(local);
-        rap_info!("aliases of idx {} via local {}: {:?}", idx, local, aliases);
         for i in aliases {
             if self.drop_record[i].is_dropped {
                 self.drop_record[idx] = self.drop_record[i];
@@ -229,7 +227,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
         if !flag_inprocess && self.df_check(bb_idx, idx, self.span, flag_cleanup) {
             return;
         }
-        rap_info!("add_to_drop_record: {:?}", idx);
+        rap_debug!("add_to_drop_record: {:?}", idx);
         if !self.drop_record[idx].is_dropped {
             self.drop_record[idx] = DropRecord::new(true, bb_idx, self.values[via_idx].local);
             rap_info!("add_to_drop_record: {:?}", self.drop_record[idx]);
