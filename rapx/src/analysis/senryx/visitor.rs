@@ -188,11 +188,11 @@ impl<'tcx> BodyVisitor<'tcx> {
                     next_block,
                     fn_map,
                 );
-                let tem_scc_sub_blocks = self.safedrop_graph.blocks[*block_index]
-                    .scc_sub_blocks
+                let tem_basic_blocks = self.safedrop_graph.blocks[*block_index]
+                    .basic_blocks
                     .clone();
-                if tem_scc_sub_blocks.len() > 0 {
-                    for sub_block in &tem_scc_sub_blocks {
+                if tem_basic_blocks.len() > 0 {
+                    for sub_block in &tem_basic_blocks {
                         self.path_analyze_block(
                             &body.basic_blocks[BasicBlock::from_usize(*sub_block)].clone(),
                             index,

@@ -45,7 +45,7 @@ pub struct SafeDropGraph<'tcx> {
     // contains all varibles (including fields) as values.
     pub values: Vec<ValueNode>,
     // contains all blocks in the CFG
-    pub blocks: Vec<BlockNode<'tcx>>,
+    pub blocks: Vec<SccBlock<'tcx>>,
     pub arg_size: usize,
     // we shrink a SCC into a node and use a scc node to represent the SCC.
     pub scc_indices: Vec<usize>,
@@ -64,7 +64,7 @@ pub struct SafeDropGraph<'tcx> {
     pub child_scc: FxHashMap<
         usize,
         (
-            BlockNode<'tcx>,
+            SccBlock<'tcx>,
             rustc_middle::mir::SwitchTargets,
             FxHashSet<usize>,
         ),
@@ -103,7 +103,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
         }
 
         let basicblocks = &body.basic_blocks;
-        let mut blocks = Vec::<BlockNode<'tcx>>::new();
+        let mut blocks = Vec::<SccBlock<'tcx>>::new();
         let mut scc_indices = Vec::<usize>::new();
         let mut disc_map = FxHashMap::default();
         let mut terms = Vec::new();
@@ -113,7 +113,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
             scc_indices.push(i);
             let iter = BasicBlock::from(i);
             let terminator = basicblocks[iter].terminator.clone().unwrap();
-            let mut cur_bb = BlockNode::new(i, basicblocks[iter].is_cleanup);
+            let mut cur_bb = SccBlock::new(i, basicblocks[iter].is_cleanup);
 
             // handle general statements
             for stmt in &basicblocks[iter].statements {
@@ -427,7 +427,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
                     // we have found all nodes of the current scc.
                     break;
                 }
-                self.blocks[index].scc_sub_blocks.push(node);
+                self.blocks[index].basic_blocks.push(node);
                 scc_block_set.insert(node);
 
                 for value in &self.blocks[index].modified_value {
@@ -471,7 +471,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
              * so that the scc can be directly used for followup analysis without referencing the
              * original graph.
              * */
-            self.blocks[index].scc_sub_blocks.reverse();
+            self.blocks[index].basic_blocks.reverse();
         }
     }
 

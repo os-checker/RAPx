@@ -3,16 +3,17 @@ use rustc_data_structures::fx::{FxHashMap, FxHashSet};
 use rustc_middle::mir::Terminator;
 use std::cell::RefCell;
 
+/// Each block is a strongly-connected component on the control-flow graph.
 #[derive(Debug, Clone)]
-pub struct BlockNode<'tcx> {
+pub struct SccBlock<'tcx> {
     pub index: usize,
     pub is_cleanup: bool,
     pub next: FxHashSet<usize>,
     pub assignments: Vec<Assignment<'tcx>>,
     pub calls: Vec<Terminator<'tcx>>,
     pub drops: Vec<Terminator<'tcx>>,
-    //store the index of the basic blocks as a SCC node.
-    pub scc_sub_blocks: Vec<usize>,
+    //store the index of the basic blocks of the SCC.
+    pub basic_blocks: Vec<usize>,
     //store const values defined in this block, i.e., which id has what value;
     pub const_value: Vec<(usize, usize)>,
     //store switch stmts in current block for the path filtering in path-sensitive analysis.
@@ -24,16 +25,16 @@ pub struct BlockNode<'tcx> {
 
 pub type SccOuter = RefCell<Option<FxHashMap<(usize, usize), Vec<usize>>>>;
 
-impl<'tcx> BlockNode<'tcx> {
-    pub fn new(index: usize, is_cleanup: bool) -> BlockNode<'tcx> {
-        BlockNode {
+impl<'tcx> SccBlock<'tcx> {
+    pub fn new(index: usize, is_cleanup: bool) -> SccBlock<'tcx> {
+        SccBlock {
             index,
             is_cleanup,
             next: FxHashSet::<usize>::default(),
             assignments: Vec::<Assignment<'tcx>>::new(),
             calls: Vec::<Terminator<'tcx>>::new(),
             drops: Vec::<Terminator<'tcx>>::new(),
-            scc_sub_blocks: Vec::<usize>::new(),
+            basic_blocks: Vec::<usize>::new(),
             const_value: Vec::<(usize, usize)>::new(),
             switch_stmts: Vec::<Terminator<'tcx>>::new(),
             modified_value: FxHashSet::<usize>::default(),
