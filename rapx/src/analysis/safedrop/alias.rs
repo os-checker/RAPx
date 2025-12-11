@@ -1,11 +1,14 @@
+use std::collections::HashSet;
+
 use rustc_middle::{
     mir::{Operand, Place, ProjectionElem, TerminatorKind},
     ty::{self, TyCtxt, TypingEnv},
 };
 
 use super::graph::*;
-use crate::analysis::core::alias_analysis::default::{
-    MopAAFact, MopAAResultMap, assign::*, types::*, value::*,
+use crate::analysis::{
+    core::alias_analysis::default::{MopAAFact, MopAAResultMap, assign::*, types::*, value::*},
+    utils::fn_info::convert_alias_to_sets,
 };
 
 impl<'tcx> SafeDropGraph<'tcx> {
@@ -28,17 +31,22 @@ impl<'tcx> SafeDropGraph<'tcx> {
                 }
                 _ => {} // Copy or Move
             }
-            self.uaf_check(
-                bb_index,
-                rv_idx,
-                assign.span,
-                //assign.rv.local.as_usize(),
-                false,
-            );
             self.fill_birth(lv_idx, self.scc_indices[bb_index] as isize);
             if self.values[lv_idx].local != self.values[rv_idx].local {
+                rap_debug!(
+                    "merge alias: lv_idx/local:{}/{}, rv_idx/local:{}/{}",
+                    lv_idx,
+                    self.values[lv_idx].local,
+                    rv_idx,
+                    self.values[rv_idx].local
+                );
                 self.merge_alias(lv_idx, rv_idx, 0);
+                rap_debug!(
+                    "Alias sets: {:?}",
+                    convert_alias_to_sets(self.alias_set.clone())
+                );
             }
+            self.uaf_check(bb_index, rv_idx, assign.span, false);
         }
     }
 
@@ -176,7 +184,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
                         node.field_id = field_idx;
                         self.values[proj_id].fields.insert(field_idx, node.index);
                         self.alias_set.push(self.alias_set.len());
-                        self.drop_record.push((false, usize::MAX, usize::MAX));
+                        self.drop_record.push(self.drop_record[proj_id]);
                         self.values.push(node);
                     }
                     proj_id = *self.values[proj_id].fields.get(&field_idx).unwrap();
@@ -225,7 +233,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
                 node.field_id = field.0;
                 self.values[lv].fields.insert(field.0, node.index);
                 self.alias_set.push(self.alias_set.len());
-                self.drop_record.push((false, usize::MAX, usize::MAX));
+                self.drop_record.push(DropRecord::false_record());
                 self.values.push(node);
             }
             let lv_field = *(self.values[lv].fields.get(&field.0).unwrap());
@@ -253,7 +261,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
                 node.field_id = *index;
                 self.values[lv].fields.insert(*index, node.index);
                 self.alias_set.push(self.alias_set.len());
-                self.drop_record.push((false, usize::MAX, usize::MAX));
+                self.drop_record.push(self.drop_record[lv]);
                 self.values.push(node);
             }
             lv = *self.values[lv].fields.get(&index).unwrap();
@@ -274,7 +282,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
                 node.field_id = *index;
                 self.values[rv].fields.insert(*index, node.index);
                 self.alias_set.push(self.values.len());
-                self.drop_record.push((false, usize::MAX, usize::MAX));
+                self.drop_record.push(self.drop_record[rv]);
                 self.values.push(node);
             }
             rv = *self.values[rv].fields.get(&index).unwrap();
@@ -313,6 +321,20 @@ impl<'tcx> SafeDropGraph<'tcx> {
         let f1 = self.union_find(e1);
         let f2 = self.union_find(e2);
         f1 == f2
+    }
+
+    #[inline(always)]
+    pub fn get_alias_set(&mut self, e: usize) -> HashSet<usize> {
+        let mut alias_set = HashSet::new();
+        for i in 0..self.alias_set.len() {
+            if i == e {
+                continue;
+            }
+            if self.union_is_same(e, i) {
+                alias_set.insert(i);
+            }
+        }
+        alias_set
     }
 
     #[inline(always)]

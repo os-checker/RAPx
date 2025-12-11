@@ -33,8 +33,8 @@ impl ValueNode {
         self.birth = -1;
     }
 
-    pub fn is_dropped(&self) -> bool {
-        !self.birth > -1
+    pub fn is_alive(&self) -> bool {
+        self.birth > -1
     }
 
     pub fn is_tuple(&self) -> bool {

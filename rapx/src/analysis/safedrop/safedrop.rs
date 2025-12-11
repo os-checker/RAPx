@@ -33,7 +33,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
                     let birth = self.scc_indices[bb_idx];
                     let local = self.projection(tcx, false, place.clone());
                     let info = drop.source_info.clone();
-                    self.drop_node(local, local, birth, &info, false, bb_idx, is_cleanup);
+                    self.add_to_drop_record(local, local, birth, &info, false, bb_idx, is_cleanup);
                 }
                 TerminatorKind::Call {
                     func: _, ref args, ..
@@ -50,7 +50,9 @@ impl<'tcx> SafeDropGraph<'tcx> {
                         };
                         let local = self.projection(tcx, false, place.clone());
                         let info = drop.source_info.clone();
-                        self.drop_node(local, local, birth, &info, false, bb_idx, is_cleanup);
+                        self.add_to_drop_record(
+                            local, local, birth, &info, false, bb_idx, is_cleanup,
+                        );
                     }
                 }
                 _ => {}

@@ -6,7 +6,6 @@ use crate::{
     },
     utils::source::*,
 };
-use rustc_data_structures::fx::FxHashSet;
 use rustc_middle::mir::SourceInfo;
 use rustc_span::{Span, symbol::Symbol};
 
@@ -40,12 +39,23 @@ impl<'tcx> SafeDropGraph<'tcx> {
         if !self.values[idx].may_drop {
             return;
         }
-        /*
-         * Check
-         * 1) if the birth of the value > -1;
-         * 2) there is a drop_record entry.
-         * */
-        if !self.is_dangling(idx) || !self.drop_record[idx].0 {
+        rap_debug!(
+            "uaf_check, idx: {:?}, local: {:?}, drop_record: {:?}, local_drop_record: {:?}",
+            idx,
+            local,
+            self.drop_record[idx],
+            self.drop_record[local],
+        );
+
+        rap_info!("Alias: {:?}", convert_alias_to_sets(self.alias_set.clone()));
+        self.sync_drop_record(idx);
+        rap_debug!(
+            "after sync drop record: idx: {:?}, local: {:?}, drop_record: {:?}",
+            idx,
+            local,
+            self.drop_record[idx]
+        );
+        if !self.drop_record[idx].is_dropped {
             return;
         }
         if self.values[idx].is_ptr() && !is_func_call {
@@ -58,8 +68,8 @@ impl<'tcx> SafeDropGraph<'tcx> {
         };
 
         let bug = TyBug {
-            drop_bb: self.drop_record[idx].1,
-            drop_id: self.drop_record[idx].2,
+            drop_bb: self.drop_record[idx].drop_at_bb,
+            drop_id: self.drop_record[idx].drop_via_local,
             trigger_bb: bb_idx,
             trigger_id: local,
             span: span.clone(),
@@ -73,51 +83,35 @@ impl<'tcx> SafeDropGraph<'tcx> {
         rap_debug!("Find use-after-free bug {:?}; add to records", local);
     }
 
-    pub fn is_dangling(&mut self, local: usize) -> bool {
-        let mut record = FxHashSet::default();
-        return self.is_dangling_inner(local, &mut record);
-    }
-
-    fn is_dangling_inner(&mut self, idx: usize, record: &mut FxHashSet<usize>) -> bool {
+    pub fn sync_drop_record(&mut self, idx: usize) {
         if idx >= self.values.len() {
-            return false;
+            return;
         }
-        //if is a dangling pointer check, only check the pointer type varible.
-        if self.values[idx].is_dropped() && (idx != 0 || (idx == 0 && self.values[idx].is_ptr())) {
-            return true;
+        let local = self.values[idx].local;
+        if self.drop_record[local].is_dropped {
+            self.drop_record[idx] = self.drop_record[local];
         }
-        record.insert(idx);
-        if self.union_has_alias(idx) {
-            for i in 0..self.alias_set.len() {
-                if i != idx && !self.union_is_same(i, idx) {
-                    continue;
-                }
-                if record.contains(&i) == false && self.is_dangling_inner(i, record) {
-                    let local = self.values[i].local;
-                    if self.drop_record[local].0 {
-                        rap_debug!(
-                            "is_dangling_inner: idx={}, i={}, {:?}",
-                            idx,
-                            local,
-                            self.drop_record[local]
-                        );
-                        self.drop_record[idx] = self.drop_record[local];
-                        return true;
-                    }
-                }
+        let aliases = self.get_alias_set(local);
+        rap_info!("aliases of idx {} via local {}: {:?}", idx, local, aliases);
+        for i in aliases {
+            if self.drop_record[i].is_dropped {
+                self.drop_record[idx] = self.drop_record[i];
+                return;
             }
         }
-        for i in self.values[idx].fields.clone().into_iter() {
-            if record.contains(&i.1) == false && self.is_dangling_inner(i.1, record) {
-                return true;
-            }
-        }
-        return false;
     }
 
     pub fn df_check(&mut self, bb_idx: usize, idx: usize, span: Span, flag_cleanup: bool) -> bool {
         let local = self.values[idx].local;
-        if !self.values[idx].is_dropped() {
+        // If the value has not been dropped, it is not a double free.
+        rap_debug!(
+            "df_check: bb_idx = {:?}, idx = {:?}, local = {:?}",
+            bb_idx,
+            idx,
+            local
+        );
+        rap_debug!("df_check: is alive? {:?}", self.values[idx].is_alive());
+        if self.values[idx].is_alive() {
             return false;
         }
         let confidence = match self.values[idx].kind {
@@ -125,8 +119,8 @@ impl<'tcx> SafeDropGraph<'tcx> {
             _ => 99,
         };
         let bug = TyBug {
-            drop_bb: self.drop_record[idx].1,
-            drop_id: self.drop_record[idx].2,
+            drop_bb: self.drop_record[idx].drop_at_bb,
+            drop_id: self.drop_record[idx].drop_via_local,
             trigger_bb: bb_idx,
             trigger_id: local,
             span: span.clone(),
@@ -153,14 +147,14 @@ impl<'tcx> SafeDropGraph<'tcx> {
     pub fn dp_check(&mut self, flag_cleanup: bool) {
         if flag_cleanup {
             for arg_idx in 1..self.arg_size + 1 {
-                if self.values[arg_idx].is_ptr() && self.is_dangling(arg_idx) {
+                if self.values[arg_idx].is_ptr() && self.drop_record[arg_idx].is_dropped {
                     let confidence = match self.values[arg_idx].kind {
                         TyKind::CornerCase => 0,
                         _ => 99,
                     };
                     let bug = TyBug {
-                        drop_bb: self.drop_record[arg_idx].1,
-                        drop_id: self.drop_record[arg_idx].2,
+                        drop_bb: self.drop_record[arg_idx].drop_at_bb,
+                        drop_id: self.drop_record[arg_idx].drop_via_local,
                         trigger_bb: usize::MAX,
                         trigger_id: arg_idx,
                         span: self.span.clone(),
@@ -174,14 +168,14 @@ impl<'tcx> SafeDropGraph<'tcx> {
                 }
             }
         } else {
-            if self.values[0].may_drop && self.is_dangling(0) {
+            if self.values[0].may_drop && self.drop_record[0].is_dropped {
                 let confidence = match self.values[0].kind {
                     TyKind::CornerCase => 0,
                     _ => 99,
                 };
                 let bug = TyBug {
-                    drop_bb: self.drop_record[0].1,
-                    drop_id: self.drop_record[0].2,
+                    drop_bb: self.drop_record[0].drop_at_bb,
+                    drop_id: self.drop_record[0].drop_via_local,
                     trigger_bb: usize::MAX,
                     trigger_id: 0,
                     span: self.span.clone(),
@@ -191,14 +185,14 @@ impl<'tcx> SafeDropGraph<'tcx> {
                 rap_debug!("Find dangling pointer 0; add to record.");
             } else {
                 for arg_idx in 0..self.arg_size + 1 {
-                    if self.values[arg_idx].is_ptr() && self.is_dangling(arg_idx) {
+                    if self.values[arg_idx].is_ptr() && self.drop_record[arg_idx].is_dropped {
                         let confidence = match self.values[arg_idx].kind {
                             TyKind::CornerCase => 0,
                             _ => 99,
                         };
                         let bug = TyBug {
-                            drop_bb: self.drop_record[arg_idx].1,
-                            drop_id: self.drop_record[arg_idx].2,
+                            drop_bb: self.drop_record[arg_idx].drop_at_bb,
+                            drop_id: self.drop_record[arg_idx].drop_via_local,
                             trigger_bb: usize::MAX,
                             trigger_id: arg_idx,
                             span: self.span.clone(),
@@ -216,7 +210,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
      * Mark the node as dropped.
      * flag_cleanup: used to distinguish if a bug occurs in the unwinding path.
      */
-    pub fn drop_node(
+    pub fn add_to_drop_record(
         &mut self,
         idx: usize,     // the value to be dropped
         via_idx: usize, // the value is dropped via its alias: via_idx
@@ -234,19 +228,16 @@ impl<'tcx> SafeDropGraph<'tcx> {
         if !flag_inprocess && self.df_check(bb_idx, idx, self.span, flag_cleanup) {
             return;
         }
-        let (flag_dropped, _, _) = self.drop_record[idx];
-        if flag_dropped {
-            return;
-        } else {
-            self.drop_record[idx] = (true, bb_idx, self.values[via_idx].local);
-        }
-        //drop their alias
-        if self.alias_set[idx] != idx {
+        rap_info!("add_to_drop_record: {:?}", idx);
+        if !self.drop_record[idx].is_dropped {
+            self.drop_record[idx] = DropRecord::new(true, bb_idx, self.values[via_idx].local);
+            rap_info!("add_to_drop_record: {:?}", self.drop_record[idx]);
+            //drop their alias
             for i in 0..self.values.len() {
                 if !self.union_is_same(idx, i) || i == idx || self.values[i].is_ref() {
                     continue;
                 }
-                self.drop_node(
+                self.add_to_drop_record(
                     i,
                     self.values[via_idx].local,
                     birth,
@@ -256,6 +247,8 @@ impl<'tcx> SafeDropGraph<'tcx> {
                     flag_cleanup,
                 );
             }
+        } else {
+            return;
         }
         //drop the fields of the root node.
         //alias flag is used to avoid the fields of the alias are dropped repeatly.
@@ -264,7 +257,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
                 if self.values[idx].is_tuple() && !self.values[field_idx].need_drop {
                     continue;
                 }
-                self.drop_node(
+                self.add_to_drop_record(
                     field_idx,
                     self.values[via_idx].local,
                     birth,

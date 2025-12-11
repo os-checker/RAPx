@@ -12,7 +12,31 @@ use rustc_middle::mir::{
 };
 use rustc_middle::ty::{self, TyCtxt, TypingEnv};
 use rustc_span::{Span, def_id::DefId};
-use std::{cmp::min, vec::Vec};
+use std::{cmp::min, usize, vec::Vec};
+
+#[derive(Debug, Copy, Clone)]
+pub struct DropRecord {
+    pub is_dropped: bool,
+    pub drop_at_bb: usize,
+    pub drop_via_local: usize,
+}
+
+impl DropRecord {
+    pub fn new(is_dropped: bool, drop_at_bb: usize, drop_via_local: usize) -> Self {
+        DropRecord {
+            is_dropped,
+            drop_at_bb,
+            drop_via_local,
+        }
+    }
+    pub fn false_record() -> Self {
+        DropRecord {
+            is_dropped: false,
+            drop_at_bb: usize::MAX,
+            drop_via_local: usize::MAX,
+        }
+    }
+}
 
 pub struct SafeDropGraph<'tcx> {
     pub def_id: DefId,
@@ -34,8 +58,7 @@ pub struct SafeDropGraph<'tcx> {
     // a threhold to avoid path explosion.
     pub visit_times: usize,
     pub alias_set: Vec<usize>,
-    // Whether a value is dropped; which block it is dropped at, and via which local;
-    pub drop_record: Vec<(bool, usize, usize)>,
+    pub drop_record: Vec<DropRecord>,
     // analysis of heap item
     pub adt_owner: OHAResultMap,
     pub child_scc: FxHashMap<
@@ -62,7 +85,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
         let arg_size = body.arg_count;
         let mut values = Vec::<ValueNode>::new();
         let mut alias = Vec::<usize>::new();
-        let mut drop_record = Vec::<(bool, usize, usize)>::new();
+        let mut drop_record = Vec::<DropRecord>::new();
         let ty_env = TypingEnv::post_analysis(tcx, def_id);
         for (local, local_decl) in locals.iter_enumerated() {
             let need_drop = local_decl.ty.needs_drop(tcx, ty_env); // the type is drop
@@ -75,7 +98,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
             );
             node.kind = kind(local_decl.ty);
             alias.push(alias.len());
-            drop_record.push((false, usize::MAX, usize::MAX));
+            drop_record.push(DropRecord::false_record());
             values.push(node);
         }
 
@@ -161,7 +184,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
                                 lvl0.field_id = 0;
                                 values[lv_local].fields.insert(0, lvl0.index);
                                 alias.push(alias.len());
-                                drop_record.push((false, usize::MAX, usize::MAX));
+                                drop_record.push(drop_record[lv_local]);
                                 values.push(lvl0);
                             }
                             match x {
