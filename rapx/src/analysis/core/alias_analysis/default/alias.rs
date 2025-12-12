@@ -167,8 +167,7 @@ impl<'tcx> MopGraph<'tcx> {
                         let ty_env = ty::TypingEnv::post_analysis(self.tcx, self.def_id);
                         let need_drop = ty.needs_drop(self.tcx, ty_env);
                         let may_drop = !is_not_drop(self.tcx, ty);
-                        let mut node =
-                            Value::new(new_id, local, need_drop, need_drop || may_drop);
+                        let mut node = Value::new(new_id, local, need_drop, need_drop || may_drop);
                         node.kind = kind(ty);
                         node.field_id = field_idx;
                         e.insert(node.index);

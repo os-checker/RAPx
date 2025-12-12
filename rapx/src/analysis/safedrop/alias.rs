@@ -15,7 +15,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
     /* alias analysis for a single block */
     pub fn alias_bb(&mut self, bb_index: usize, tcx: TyCtxt<'tcx>) {
         for stmt in self.blocks[bb_index].const_value.clone() {
-            self.constant.insert(stmt.0, stmt.1);
+            self.constants.insert(stmt.0, stmt.1);
         }
         let cur_block = self.blocks[bb_index].clone();
         for assign in cur_block.assignments {
@@ -177,8 +177,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
                         let ty_env = TypingEnv::post_analysis(tcx, self.def_id);
                         let need_drop = ty.needs_drop(tcx, ty_env);
                         let may_drop = !is_not_drop(tcx, ty);
-                        let mut node =
-                            Value::new(new_id, local, need_drop, need_drop || may_drop);
+                        let mut node = Value::new(new_id, local, need_drop, need_drop || may_drop);
                         node.kind = kind(ty);
                         node.birth = self.values[proj_id].birth;
                         node.field_id = field_idx;
@@ -275,8 +274,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
             if !self.values[rv].fields.contains_key(&index) {
                 let need_drop = ret_alias.rhs_need_drop;
                 let may_drop = ret_alias.rhs_may_drop;
-                let mut node =
-                    Value::new(self.alias_set.len(), right_init, need_drop, may_drop);
+                let mut node = Value::new(self.alias_set.len(), right_init, need_drop, may_drop);
                 node.kind = TyKind::RawPtr;
                 node.birth = self.values[rv].birth;
                 node.field_id = *index;

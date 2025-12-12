@@ -227,10 +227,9 @@ impl<'tcx> SafeDropGraph<'tcx> {
         if !flag_inprocess && self.df_check(bb_idx, idx, self.span, flag_cleanup) {
             return;
         }
-        rap_debug!("add_to_drop_record: {:?}", idx);
         if !self.drop_record[idx].is_dropped {
             self.drop_record[idx] = DropRecord::new(true, bb_idx, self.values[via_idx].local);
-            rap_info!("add_to_drop_record: {:?}", self.drop_record[idx]);
+            rap_debug!("add_to_drop_record: idx = {}, {:?}", idx, self.drop_record[idx]);
             //drop their alias
             for i in 0..self.values.len() {
                 if !self.union_is_same(idx, i) || i == idx || self.values[i].is_ref() {

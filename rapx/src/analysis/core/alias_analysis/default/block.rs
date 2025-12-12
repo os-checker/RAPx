@@ -18,7 +18,7 @@ pub struct SccBlock<'tcx> {
     pub const_value: Vec<(usize, usize)>,
     //store switch stmts in current block for the path filtering in path-sensitive analysis.
     pub switch_stmts: Vec<Terminator<'tcx>>,
-    pub modified_value: FxHashSet<usize>,
+    pub assigned_locals: FxHashSet<usize>,
     // (SwitchInt target, enum index) -> outside nodes.
     pub scc_outer: SccOuter,
 }
@@ -37,7 +37,7 @@ impl<'tcx> SccBlock<'tcx> {
             basic_blocks: Vec::<usize>::new(),
             const_value: Vec::<(usize, usize)>::new(),
             switch_stmts: Vec::<Terminator<'tcx>>::new(),
-            modified_value: FxHashSet::<usize>::default(),
+            assigned_locals: FxHashSet::<usize>::default(),
             scc_outer: RefCell::new(None),
         }
     }

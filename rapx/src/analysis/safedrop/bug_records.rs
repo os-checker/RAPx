@@ -6,7 +6,7 @@ use crate::utils::log::{
     are_spans_in_same_file, get_basic_block_span, get_variable_name, relative_pos_range,
     span_to_filename, span_to_line_number, span_to_source_code,
 };
-use rustc_middle::mir::Body;
+use rustc_middle::mir::{Body, Local};
 
 #[derive(Debug)]
 pub struct TyBug {
@@ -168,7 +168,7 @@ impl BugRecords {
         for bug in bugs.values() {
             if are_spans_in_same_file(span, bug.span) {
                 let format_debug_info = |id: usize| -> String {
-                    let local = rustc_middle::mir::Local::from_usize(id);
+                    let local = Local::from_usize(id);
                     let name_opt = get_variable_name(body, id); // 假设这个函数在你当前作用域可用
                     let decl_span = body.local_decls[local].source_info.span;
                     let location = format!(

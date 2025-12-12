@@ -83,7 +83,7 @@ impl<'tcx> MopGraph<'tcx> {
                 if let StatementKind::Assign(ref assign) = stmt.kind {
                     let lv_local = assign.0.local.as_usize(); // assign.0 is a Place
                     let lv = assign.0;
-                    cur_bb.modified_value.insert(lv_local);
+                    cur_bb.assigned_locals.insert(lv_local);
                     match assign.1 {
                         // assign.1 is a Rvalue
                         Rvalue::Use(ref x) => {
@@ -361,7 +361,7 @@ impl<'tcx> MopGraph<'tcx> {
         }
         // generate SCC
         if dfn[index] == low[index] {
-            let mut modified_set = FxHashSet::<usize>::default();
+            let mut assigned_locals = FxHashSet::<usize>::default();
             let mut switch_target = Vec::new();
             let mut scc_block_set = FxHashSet::<usize>::default();
             let init_block = self.blocks[index].clone();
@@ -376,8 +376,8 @@ impl<'tcx> MopGraph<'tcx> {
                 self.blocks[index].basic_blocks.push(node);
                 scc_block_set.insert(node);
 
-                for value in &self.blocks[index].modified_value {
-                    modified_set.insert(*value);
+                for value in &self.blocks[index].assigned_locals {
+                    assigned_locals.insert(*value);
                 }
                 if let Some(target) = self.switch_target(node) {
                     if !self.blocks[index].switch_stmts.is_empty() {
@@ -390,7 +390,7 @@ impl<'tcx> MopGraph<'tcx> {
                     self.blocks[index].next.insert(i);
                 }
             }
-            switch_target.retain(|v| !modified_set.contains(&(v.0)));
+            switch_target.retain(|v| !assigned_locals.contains(&(v.0)));
 
             if !switch_target.is_empty() && switch_target.len() == 1 {
                 //let target_index = switch_target[0].0;
