@@ -404,15 +404,8 @@ impl<'tcx> MopGraph<'tcx> {
                     .insert(index, (init_block, targets, scc_block_set));
             }
             /* remove next nodes which are already in the current SCC */
-            let mut to_remove = Vec::new();
-            for i in self.blocks[index].next.iter() {
-                if self.scc_indices[*i] == index {
-                    to_remove.push(*i);
-                }
-            }
-            for i in to_remove {
-                self.blocks[index].next.remove(&i);
-            }
+            self.blocks[index].next.retain(|i| self.scc_indices[*i] != index);
+
             /* To ensure a resonable order of blocks within one SCC,
              * so that the scc can be directly used for followup analysis without referencing the
              * original graph.
