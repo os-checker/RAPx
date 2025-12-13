@@ -221,7 +221,7 @@ impl<'tcx> MopGraph<'tcx> {
                     discr: _,
                     ref targets,
                 } => {
-                    cur_bb.switch_stmts.push(terminator.clone());
+                    cur_bb.switch_stmt = Some(terminator.clone());
                     for (_, ref target) in targets.iter() {
                         cur_bb.add_next(target.as_usize());
                     }
@@ -338,79 +338,80 @@ impl<'tcx> MopGraph<'tcx> {
 
     pub fn tarjan(
         &mut self,
-        index: usize,
+        current: usize,
         stack: &mut Vec<usize>,
         instack: &mut FxHashSet<usize>,
         dfn: &mut Vec<usize>,
         low: &mut Vec<usize>,
         time: &mut usize,
     ) {
-        dfn[index] = *time;
-        low[index] = *time;
+        dfn[current] = *time;
+        low[current] = *time;
         *time += 1;
-        instack.insert(index);
-        stack.push(index);
-        let out_set = self.blocks[index].next.clone();
+        instack.insert(current);
+        stack.push(current);
+        let out_set = self.blocks[current].next.clone();
         for target in out_set {
             if dfn[target] == 0 {
                 self.tarjan(target, stack, instack, dfn, low, time);
-                low[index] = min(low[index], low[target]);
+                low[current] = min(low[current], low[target]);
             } else if instack.contains(&target) {
-                low[index] = min(low[index], dfn[target]);
+                low[current] = min(low[current], dfn[target]);
             }
         }
         // generate SCC
-        if dfn[index] == low[index] {
+        if dfn[current] == low[current] {
             let mut assigned_locals = FxHashSet::<usize>::default();
-            let mut switch_target = Vec::new();
+            let mut switch_conds = Vec::new();
             let mut scc_block_set = FxHashSet::<usize>::default();
-            let init_block = self.blocks[index].clone();
+            let init_block = self.blocks[current].clone();
             loop {
                 let node = stack.pop().unwrap();
-                self.scc_indices[node] = index;
+                self.scc_indices[node] = current;
                 instack.remove(&node);
-                if index == node {
+                if current == node {
                     // we have found all nodes of the current scc.
                     break;
                 }
-                self.blocks[index].dominated_scc_bbs.push(node);
+                self.blocks[current].dominated_scc_bbs.push(node);
                 scc_block_set.insert(node);
 
-                for value in &self.blocks[index].assigned_locals {
+                for value in &self.blocks[current].assigned_locals {
                     assigned_locals.insert(*value);
                 }
-                if let Some(target) = self.switch_target(node) {
-                    if !self.blocks[index].switch_stmts.is_empty() {
-                        switch_target.push((target, self.blocks[index].switch_stmts[0].clone()));
+                if let Some(place) = self.get_switch_conds(node) {
+                    if let Some(switch_stmt) = self.blocks[current].switch_stmt.clone() {
+                        switch_conds.push((place, switch_stmt));
                     }
                 }
 
                 let nexts = self.blocks[node].next.clone();
                 for i in nexts {
-                    self.blocks[index].next.insert(i);
+                    self.blocks[current].next.insert(i);
                 }
             }
-            switch_target.retain(|v| !assigned_locals.contains(&(v.0)));
+            switch_conds.retain(|v| !assigned_locals.contains(&(v.0)));
 
-            if !switch_target.is_empty() && switch_target.len() == 1 {
-                //let target_index = switch_target[0].0;
-                let target_terminator = switch_target[0].1.clone();
+            if !switch_conds.is_empty() && switch_conds.len() == 1 {
+                let target_terminator = switch_conds[0].1.clone();
 
                 let TerminatorKind::SwitchInt { discr: _, targets } = target_terminator.kind else {
                     unreachable!();
                 };
 
                 self.child_scc
-                    .insert(index, (init_block, targets, scc_block_set));
+                    .insert(current, (init_block, targets, scc_block_set));
             }
             /* remove next nodes which are already in the current SCC */
-            self.blocks[index].next.retain(|i| self.scc_indices[*i] != index);
+            self.blocks[current]
+                .next
+                .retain(|i| self.scc_indices[*i] != current);
 
             /* To ensure a resonable order of blocks within one SCC,
              * so that the scc can be directly used for followup analysis without referencing the
              * original graph.
              * */
-            self.blocks[index].dominated_scc_bbs.reverse();
+            self.blocks[current].dominated_scc_bbs.reverse();
         }
     }
 
@@ -510,26 +511,17 @@ impl<'tcx> MopGraph<'tcx> {
 
         expanded_path
     }
-
-    pub fn switch_target(&mut self, block_index: usize) -> Option<usize> {
+    pub fn get_switch_conds(&mut self, block_index: usize) -> Option<usize> {
         let block = &self.blocks[block_index];
-        if block.switch_stmts.is_empty() {
+        let switch_stmt = block.switch_stmt.as_ref()?;
+
+        let TerminatorKind::SwitchInt { discr, .. } = &switch_stmt.kind else {
             return None;
+        };
+
+        match discr {
+            Operand::Copy(p) | Operand::Move(p) => Some(self.projection(false, *p)),
+            _ => None,
         }
-
-        let res =
-            if let TerminatorKind::SwitchInt { discr, targets: _ } = &block.switch_stmts[0].kind {
-                match discr {
-                    Operand::Copy(p) | Operand::Move(p) => {
-                        let place = self.projection(false, p.clone());
-                        Some(place)
-                    }
-                    _ => None,
-                }
-            } else {
-                None
-            };
-
-        res
     }
 }

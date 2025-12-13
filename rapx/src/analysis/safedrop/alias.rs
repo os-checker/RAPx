@@ -13,14 +13,14 @@ use crate::analysis::{
 
 impl<'tcx> SafeDropGraph<'tcx> {
     /* alias analysis for a single block */
-    pub fn alias_bb(&mut self, bb_index: usize, tcx: TyCtxt<'tcx>) {
+    pub fn alias_bb(&mut self, bb_index: usize) {
         for stmt in self.blocks[bb_index].const_value.clone() {
             self.constants.insert(stmt.0, stmt.1);
         }
         let cur_block = self.blocks[bb_index].clone();
         for assign in cur_block.assignments {
-            let mut lv_idx = self.projection(tcx, false, assign.lv);
-            let rv_idx = self.projection(tcx, true, assign.rv);
+            let mut lv_idx = self.projection(false, assign.lv);
+            let rv_idx = self.projection(true, assign.rv);
             match assign.atype {
                 AssignType::Variant => {
                     self.alias_set[lv_idx] = rv_idx;
@@ -65,7 +65,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
             } = call.kind
             {
                 if let Operand::Constant(constant) = func {
-                    let lv = self.projection(tcx, false, destination.clone());
+                    let lv = self.projection(false, destination.clone());
                     self.values[lv].birth = self.scc_indices[bb_index] as isize;
                     let mut merge_vec = Vec::new();
                     merge_vec.push(lv);
@@ -76,7 +76,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
                     for arg in args {
                         match arg.node {
                             Operand::Copy(ref p) => {
-                                let rv = self.projection(tcx, true, p.clone());
+                                let rv = self.projection(true, p.clone());
                                 //self.uaf_check(rv, call.source_info.span, p.local.as_usize(), true);
                                 self.uaf_check(bb_index, rv, call.source_info.span, true);
                                 merge_vec.push(rv);
@@ -85,7 +85,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
                                 }
                             }
                             Operand::Move(ref p) => {
-                                let rv = self.projection(tcx, true, p.clone());
+                                let rv = self.projection(true, p.clone());
                                 self.uaf_check(bb_index, rv, call.source_info.span, true);
                                 merge_vec.push(rv);
                                 if self.values[rv].may_drop {
@@ -154,7 +154,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
      * If the id is not a ref, we further make the id and its first element an alias, i.e., level-insensitive
      *
      */
-    pub fn projection(&mut self, tcx: TyCtxt<'tcx>, is_right: bool, place: Place<'tcx>) -> usize {
+    pub fn projection(&mut self, is_right: bool, place: Place<'tcx>) -> usize {
         let mut local = place.local.as_usize();
         let mut proj_id = local;
         for proj in place.projection {
@@ -174,9 +174,9 @@ impl<'tcx> SafeDropGraph<'tcx> {
                     }
                     let field_idx = field.as_usize();
                     if !self.values[proj_id].fields.contains_key(&field_idx) {
-                        let ty_env = TypingEnv::post_analysis(tcx, self.def_id);
-                        let need_drop = ty.needs_drop(tcx, ty_env);
-                        let may_drop = !is_not_drop(tcx, ty);
+                        let ty_env = TypingEnv::post_analysis(self.tcx, self.def_id);
+                        let need_drop = ty.needs_drop(self.tcx, ty_env);
+                        let may_drop = !is_not_drop(self.tcx, ty);
                         let mut node = Value::new(new_id, local, need_drop, need_drop || may_drop);
                         node.kind = kind(ty);
                         node.birth = self.values[proj_id].birth;

@@ -15,7 +15,7 @@ pub struct Block<'tcx> {
     //store the index of the basic blocks of the SCC.
     pub const_value: Vec<(usize, usize)>,
     //store switch stmts in current block for the path filtering in path-sensitive analysis.
-    pub switch_stmts: Vec<Terminator<'tcx>>,
+    pub switch_stmt: Option<Terminator<'tcx>>,
     pub assigned_locals: FxHashSet<usize>,
     // If this block is the dominitor of a SCC, we record all basic blocks of the SCC.
     pub dominated_scc_bbs: Vec<usize>,
@@ -37,7 +37,7 @@ impl<'tcx> Block<'tcx> {
             drops: Vec::<Terminator<'tcx>>::new(),
             dominated_scc_bbs: Vec::<usize>::new(),
             const_value: Vec::<(usize, usize)>::new(),
-            switch_stmts: Vec::<Terminator<'tcx>>::new(),
+            switch_stmt: None,
             assigned_locals: FxHashSet::<usize>::default(),
             scc_outer: RefCell::new(None),
         }

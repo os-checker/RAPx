@@ -12,7 +12,7 @@ use rustc_middle::mir::{
 };
 use rustc_middle::ty::{self, TyCtxt, TypingEnv};
 use rustc_span::{Span, def_id::DefId};
-use std::{fmt, cmp::min, usize, vec::Vec};
+use std::{cmp::min, fmt, usize, vec::Vec};
 
 #[derive(Debug, Copy, Clone)]
 pub struct DropRecord {
@@ -44,13 +44,13 @@ pub struct SafeDropGraph<'tcx> {
     pub def_id: DefId,
     pub tcx: TyCtxt<'tcx>,
     // The field is used to detect dangling pointers in arguments after the function returns.
-    pub arg_size: usize, 
+    pub arg_size: usize,
     pub span: Span,
-    // All values (including fields) of the function. 
+    // All values (including fields) of the function.
     // For general variables, we use its Local as the value index;
     // For fields, the value index is determined via auto increment.
     pub values: Vec<Value>,
-    // All blocks of the function; 
+    // All blocks of the function;
     // Each block is initialized as a basic block of the mir;
     // The blocks are then aggregated into strongly-connected components.
     pub blocks: Vec<Block<'tcx>>,
@@ -68,7 +68,8 @@ pub struct SafeDropGraph<'tcx> {
     pub drop_record: Vec<DropRecord>,
     // analysis of heap item
     pub adt_owner: OHAResultMap,
-    // This is essentially the original basic block;
+    // If a basic block is not the dominator of the SCC; it can still dominator a sub scc;
+    // Move this field to Block?
     pub child_scc: FxHashMap<
         usize,
         (
@@ -279,10 +280,13 @@ impl<'tcx> SafeDropGraph<'tcx> {
                             }
                             _ => {}
                         }
-                    },
-                    StatementKind::SetDiscriminant { place: _, variant_index: _ } => {
+                    }
+                    StatementKind::SetDiscriminant {
+                        place: _,
+                        variant_index: _,
+                    } => {
                         rap_warn!("SetDiscriminant: {:?} is not handled in RAPx!", stmt);
-                    },
+                    }
                     _ => {}
                 }
             }
@@ -298,7 +302,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
                     discr: _,
                     ref targets,
                 } => {
-                    cur_bb.switch_stmts.push(terminator.clone());
+                    cur_bb.switch_stmt = Some(terminator.clone());
                     for (_, target) in targets.iter() {
                         cur_bb.add_next(target.as_usize());
                     }
@@ -442,7 +446,8 @@ impl<'tcx> SafeDropGraph<'tcx> {
         stack.push(current);
         let nexts = self.blocks[current].next.clone();
         for next in nexts {
-            if dfn[next] == 0 { // the node has not been visited yet; 
+            if dfn[next] == 0 {
+                // the node has not been visited yet;
                 self.tarjan(next, stack, dfn, low, time);
                 low[current] = min(low[current], low[next]);
             } else if stack.contains(&next) {
@@ -453,7 +458,10 @@ impl<'tcx> SafeDropGraph<'tcx> {
         // generate SCC
         if dfn[current] == low[current] {
             let mut assigned_locals = FxHashSet::<usize>::default();
-            let mut switch_target = Vec::new();
+            for local in &self.blocks[current].assigned_locals {
+                assigned_locals.insert(*local);
+            }
+            let mut switch_conds = Vec::new();
             let mut scc_block_set = FxHashSet::<usize>::default();
             let init_block = self.blocks[current].clone();
             loop {
@@ -466,23 +474,32 @@ impl<'tcx> SafeDropGraph<'tcx> {
                 self.blocks[current].dominated_scc_bbs.push(node);
                 scc_block_set.insert(node);
 
-                for local in &self.blocks[current].assigned_locals {
-                    assigned_locals.insert(*local);
-                }
-                if let Some(target) = self.switch_target(self.tcx, node) {
-                    if !self.blocks[current].switch_stmts.is_empty() {
-                        switch_target.push((target, self.blocks[current].switch_stmts[0].clone()));
+                // If the node contains a SwitchInt instruction, we should also consider the
+                // condition in the SwitchInt instruction of the SCC diminator.
+                // Example :
+                //  let p = ...
+                //  while x {
+                //      use(p)
+                //      if y {
+                //          drop(p);
+                //      }
+                //      x -= 1;
+                //  }
+                if let Some(place) = self.get_switch_conds(node) {
+                    if let Some(switch_stmt) = self.blocks[current].switch_stmt.clone() {
+                        switch_conds.push((place, switch_stmt));
                     }
                 }
+
                 let nexts = self.blocks[node].next.clone();
                 for i in nexts {
                     self.blocks[current].next.insert(i);
                 }
             }
-            switch_target.retain(|v| !assigned_locals.contains(&(v.0)));
+            switch_conds.retain(|v| !assigned_locals.contains(&(v.0)));
 
-            if !switch_target.is_empty() && switch_target.len() == 1 {
-                let target_terminator = switch_target[0].1.clone();
+            if !switch_conds.is_empty() && switch_conds.len() == 1 {
+                let target_terminator = switch_conds[0].1.clone();
 
                 let TerminatorKind::SwitchInt { discr: _, targets } = target_terminator.kind else {
                     unreachable!();
@@ -493,7 +510,9 @@ impl<'tcx> SafeDropGraph<'tcx> {
             }
 
             /* remove next nodes which are already in the current SCC */
-            self.blocks[current].next.retain(|i| self.scc_indices[*i] != current);
+            self.blocks[current]
+                .next
+                .retain(|i| self.scc_indices[*i] != current);
 
             /* To ensure a resonable order of blocks within one SCC,
              * so that the scc can be directly used for followup analysis without referencing the
@@ -537,22 +556,17 @@ impl<'tcx> SafeDropGraph<'tcx> {
         paths
     }
 
-    pub fn switch_target(&mut self, tcx: TyCtxt<'tcx>, block_index: usize) -> Option<usize> {
+    pub fn get_switch_conds(&mut self, block_index: usize) -> Option<usize> {
         let block = &self.blocks[block_index];
-        if block.switch_stmts.is_empty() {
-            return None;
-        }
+        let switch_stmt = block.switch_stmt.as_ref()?;
 
-        if let TerminatorKind::SwitchInt { discr, .. } = &block.switch_stmts[0].kind {
-            match discr {
-                Operand::Copy(p) | Operand::Move(p) => {
-                    let place = self.projection(tcx, false, *p);
-                    Some(place)
-                }
-                _ => None,
-            }
-        } else {
-            None
+        let TerminatorKind::SwitchInt { discr, .. } = &switch_stmt.kind else {
+            return None;
+        };
+
+        match discr {
+            Operand::Copy(p) | Operand::Move(p) => Some(self.projection(false, *p)),
+            _ => None,
         }
     }
 }

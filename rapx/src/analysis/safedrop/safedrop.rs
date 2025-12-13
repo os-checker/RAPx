@@ -31,7 +31,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
                         continue;
                     }
                     let birth = self.scc_indices[bb_idx];
-                    let local = self.projection(tcx, false, place.clone());
+                    let local = self.projection(false, place.clone());
                     let info = drop.source_info.clone();
                     self.add_to_drop_record(local, local, birth, &info, false, bb_idx, is_cleanup);
                 }
@@ -48,7 +48,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
                                 return;
                             }
                         };
-                        let local = self.projection(tcx, false, place.clone());
+                        let local = self.projection(false, place.clone());
                         let info = drop.source_info.clone();
                         self.add_to_drop_record(
                             local, local, birth, &info, false, bb_idx, is_cleanup,
@@ -125,7 +125,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
             return;
         }
         let cur_block = self.blocks[self.scc_indices[bb_idx]].clone();
-        self.alias_bb(self.scc_indices[bb_idx], tcx);
+        self.alias_bb(self.scc_indices[bb_idx]);
         self.alias_bbcall(self.scc_indices[bb_idx], tcx, fn_map);
         self.drop_check(self.scc_indices[bb_idx], tcx);
 
@@ -144,8 +144,8 @@ impl<'tcx> SafeDropGraph<'tcx> {
                     self.blocks[bb_idx].clone()
                 };
 
-                if !block_node.switch_stmts.is_empty() {
-                    match &block_node.switch_stmts[0].kind {
+                if let Some(switch_stmt) = block_node.switch_stmt {
+                    match &switch_stmt.kind {
                         TerminatorKind::SwitchInt { targets, .. } => {
                             if cur_targets == *targets {
                                 block_node.next = FxHashSet::default();
@@ -171,47 +171,53 @@ impl<'tcx> SafeDropGraph<'tcx> {
                         init_block.clone()
                     };
 
-                    if real_node.switch_stmts.is_empty() {
-                        for next in &real_node.next {
-                            block_node.next.insert(*next);
-                        }
-                    } else {
-                        let TerminatorKind::SwitchInt { ref targets, .. } =
-                            real_node.switch_stmts[0].kind
-                        else {
-                            unreachable!();
-                        };
+                    match real_node.switch_stmt {
+                        Some(ref switch_stmt) => {
+                            let TerminatorKind::SwitchInt { ref targets, .. } = switch_stmt.kind
+                            else {
+                                unreachable!();
+                            };
 
-                        if cur_targets == *targets {
-                            block_node.next.insert(enum_idx.index());
-                        } else {
+                            if cur_targets == *targets {
+                                block_node.next.insert(enum_idx.index());
+                            } else {
+                                for next in &real_node.next {
+                                    block_node.next.insert(*next);
+                                }
+                            }
+                        }
+                        None => {
                             for next in &real_node.next {
                                 block_node.next.insert(*next);
                             }
                         }
                     }
 
-                    if real_node.switch_stmts.is_empty() {
-                        for next in &real_node.next {
-                            if scc_block_set.contains(next) && !work_set.contains(next) {
-                                work_set.insert(*next);
-                                work_list.push(*next);
+                    match real_node.switch_stmt {
+                        Some(ref switch_stmt) => {
+                            let TerminatorKind::SwitchInt { ref targets, .. } = switch_stmt.kind
+                            else {
+                                unreachable!();
+                            };
+
+                            if cur_targets == *targets {
+                                let next_idx = enum_idx.index();
+                                if scc_block_set.contains(&next_idx)
+                                    && !work_set.contains(&next_idx)
+                                {
+                                    work_set.insert(next_idx);
+                                    work_list.push(next_idx);
+                                }
+                            } else {
+                                for next in &real_node.next {
+                                    if scc_block_set.contains(next) && !work_set.contains(next) {
+                                        work_set.insert(*next);
+                                        work_list.push(*next);
+                                    }
+                                }
                             }
                         }
-                    } else {
-                        let TerminatorKind::SwitchInt { ref targets, .. } =
-                            real_node.switch_stmts[0].kind
-                        else {
-                            unreachable!();
-                        };
-
-                        if cur_targets == *targets {
-                            let next_idx = enum_idx.index();
-                            if scc_block_set.contains(&next_idx) && !work_set.contains(&next_idx) {
-                                work_set.insert(next_idx);
-                                work_list.push(next_idx);
-                            }
-                        } else {
+                        None => {
                             for next in &real_node.next {
                                 if scc_block_set.contains(next) && !work_set.contains(next) {
                                     work_set.insert(*next);
@@ -234,7 +240,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
                 }
 
                 for i in block_node.dominated_scc_bbs.clone() {
-                    self.alias_bb(i, tcx);
+                    self.alias_bb(i);
                     self.alias_bbcall(i, tcx, fn_map);
                     self.drop_check(i, tcx);
                 }
@@ -298,7 +304,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
 
             if !scc_each.is_empty() {
                 for idx in scc_each {
-                    self.alias_bb(idx, tcx);
+                    self.alias_bb(idx);
                     self.alias_bbcall(idx, tcx, fn_map);
                 }
             }
@@ -332,17 +338,19 @@ impl<'tcx> SafeDropGraph<'tcx> {
             let mut sw_target = 0; // Single target
             let mut path_discr_id = 0; // To avoid analyzing paths that cannot be reached with one enum type.
             let mut sw_targets = None; // Multiple targets of SwitchInt
-            if !cur_block.switch_stmts.is_empty() && cur_block.dominated_scc_bbs.is_empty() {
+            if let Some(switch_stmt) = cur_block.switch_stmt
+                && cur_block.dominated_scc_bbs.is_empty()
+            {
                 if let TerminatorKind::SwitchInt {
                     ref discr,
                     ref targets,
-                } = cur_block.switch_stmts[0].clone().kind
+                } = switch_stmt.kind
                 {
-                    rap_debug!("{:?}", cur_block.switch_stmts[0]);
+                    rap_debug!("{:?}", switch_stmt);
                     rap_debug!("{:?}", self.constants);
                     match discr {
                         Copy(p) | Move(p) => {
-                            let place = self.projection(tcx, false, *p);
+                            let place = self.projection(false, *p);
                             let local_decls = &tcx.optimized_mir(self.def_id).local_decls;
                             let place_ty = (*p).ty(local_decls, tcx);
                             rap_debug!("place {:?}", place);
@@ -472,7 +480,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
         match term {
             TerminatorKind::SwitchInt { discr, targets } => match discr {
                 Copy(p) | Move(p) => {
-                    let place = self.projection(self.tcx, false, *p);
+                    let place = self.projection(false, *p);
                     if let Some(father) = self.discriminants.get(&self.values[place].local) {
                         let father = *father;
                         if let Some(constant) = discriminants.get(&father) {
@@ -485,7 +493,13 @@ impl<'tcx> SafeDropGraph<'tcx> {
                                     }
                                     path.push(target);
                                     self.calculate_scc_order(
-                                        scc, path, ans, discriminants, target, root, visit,
+                                        scc,
+                                        path,
+                                        ans,
+                                        discriminants,
+                                        target,
+                                        root,
+                                        visit,
                                     );
                                     path.pop();
                                 }
@@ -500,7 +514,13 @@ impl<'tcx> SafeDropGraph<'tcx> {
                                 path.push(target);
                                 discriminants.insert(father, constant);
                                 self.calculate_scc_order(
-                                    scc, path, ans, discriminants, target, root, visit,
+                                    scc,
+                                    path,
+                                    ans,
+                                    discriminants,
+                                    target,
+                                    root,
+                                    visit,
                                 );
                                 discriminants.remove(&father);
                                 path.pop();
@@ -517,7 +537,13 @@ impl<'tcx> SafeDropGraph<'tcx> {
                                     }
                                     path.push(target);
                                     self.calculate_scc_order(
-                                        scc, path, ans, discriminants, target, root, visit,
+                                        scc,
+                                        path,
+                                        ans,
+                                        discriminants,
+                                        target,
+                                        root,
+                                        visit,
                                     );
                                     path.pop();
                                 }
@@ -532,7 +558,13 @@ impl<'tcx> SafeDropGraph<'tcx> {
                                 path.push(target);
                                 discriminants.insert(place, constant);
                                 self.calculate_scc_order(
-                                    scc, path, ans, discriminants, target, root, visit,
+                                    scc,
+                                    path,
+                                    ans,
+                                    discriminants,
+                                    target,
+                                    root,
+                                    visit,
                                 );
                                 discriminants.remove(&place);
                                 path.pop();
@@ -544,7 +576,13 @@ impl<'tcx> SafeDropGraph<'tcx> {
                                 path.push(target);
                                 discriminants.insert(place, constant);
                                 self.calculate_scc_order(
-                                    scc, path, ans, discriminants, target, root, visit,
+                                    scc,
+                                    path,
+                                    ans,
+                                    discriminants,
+                                    target,
+                                    root,
+                                    visit,
                                 );
                                 discriminants.remove(&place);
                                 path.pop();

@@ -73,7 +73,7 @@ impl<'tcx> MopGraph<'tcx> {
             let (init_block, cur_targets, scc_block_set) =
                 self.child_scc.get(&init_index).unwrap().clone();
 
-            for enum_index in cur_targets.all_targets() {
+            for enum_idx in cur_targets.all_targets() {
                 let backup_values = self.values.clone();
                 let backup_constant = self.constant.clone();
 
@@ -82,16 +82,17 @@ impl<'tcx> MopGraph<'tcx> {
                 } else {
                     self.blocks[bb_index].clone()
                 };
-
-                if !block_node.switch_stmts.is_empty() {
-                    let TerminatorKind::SwitchInt { discr: _, targets } =
-                        block_node.switch_stmts[0].kind.clone()
-                    else {
-                        unreachable!();
-                    };
-                    if cur_targets == targets {
-                        block_node.next = FxHashSet::default();
-                        block_node.next.insert(enum_index.index());
+                if let Some(switch_stmt) = block_node.switch_stmt {
+                    match &switch_stmt.kind {
+                        TerminatorKind::SwitchInt { targets, .. } => {
+                            if cur_targets == *targets {
+                                block_node.next = FxHashSet::default();
+                                block_node.next.insert(enum_idx.index());
+                            }
+                        }
+                        _ => {
+                            unreachable!();
+                        }
                     }
                 }
 
@@ -107,54 +108,52 @@ impl<'tcx> MopGraph<'tcx> {
                     } else {
                         init_block.clone()
                     };
+                    match real_node.switch_stmt {
+                        Some(ref switch_stmt) => {
+                            let TerminatorKind::SwitchInt { ref targets, .. } = switch_stmt.kind
+                            else {
+                                unreachable!();
+                            };
 
-                    if real_node.switch_stmts.is_empty() {
-                        for next in &real_node.next {
-                            block_node.next.insert(*next);
+                            if cur_targets == *targets {
+                                block_node.next.insert(enum_idx.index());
+                            } else {
+                                for next in &real_node.next {
+                                    block_node.next.insert(*next);
+                                }
+                            }
                         }
-                    } else {
-                        let TerminatorKind::SwitchInt {
-                            discr: _,
-                            ref targets,
-                        } = real_node.switch_stmts[0].kind
-                        else {
-                            unreachable!();
-                        };
-
-                        if cur_targets == *targets {
-                            block_node.next.insert(enum_index.index());
-                        } else {
+                        None => {
                             for next in &real_node.next {
                                 block_node.next.insert(*next);
                             }
                         }
                     }
+                    match real_node.switch_stmt {
+                        Some(ref switch_stmt) => {
+                            let TerminatorKind::SwitchInt { ref targets, .. } = switch_stmt.kind
+                            else {
+                                unreachable!();
+                            };
 
-                    if real_node.switch_stmts.is_empty() {
-                        for next in &real_node.next {
-                            if scc_block_set.contains(next) && !work_set.contains(next) {
-                                work_set.insert(*next);
-                                work_list.push(*next);
+                            if cur_targets == *targets {
+                                let next_idx = enum_idx.index();
+                                if scc_block_set.contains(&next_idx)
+                                    && !work_set.contains(&next_idx)
+                                {
+                                    work_set.insert(next_idx);
+                                    work_list.push(next_idx);
+                                }
+                            } else {
+                                for next in &real_node.next {
+                                    if scc_block_set.contains(next) && !work_set.contains(next) {
+                                        work_set.insert(*next);
+                                        work_list.push(*next);
+                                    }
+                                }
                             }
                         }
-                    } else {
-                        let TerminatorKind::SwitchInt {
-                            discr: _,
-                            ref targets,
-                        } = real_node.switch_stmts[0].kind
-                        else {
-                            unreachable!();
-                        };
-
-                        if cur_targets == *targets {
-                            let next_index = enum_index.index();
-                            if scc_block_set.contains(&next_index)
-                                && !work_set.contains(&next_index)
-                            {
-                                work_set.insert(next_index);
-                                work_list.push(next_index);
-                            }
-                        } else {
+                        None => {
                             for next in &real_node.next {
                                 if scc_block_set.contains(next) && !work_set.contains(next) {
                                     work_set.insert(*next);
@@ -271,11 +270,13 @@ impl<'tcx> MopGraph<'tcx> {
             let mut sw_target = 0; // Single target
             let mut path_discr_id = 0; // To avoid analyzing paths that cannot be reached with one enum type.
             let mut sw_targets = None; // Multiple targets of SwitchInt
-            if !cur_block.switch_stmts.is_empty() && cur_block.dominated_scc_bbs.is_empty() {
+            if let Some(switch_stmt) = cur_block.switch_stmt
+                && cur_block.dominated_scc_bbs.is_empty()
+            {
                 if let TerminatorKind::SwitchInt {
                     ref discr,
                     ref targets,
-                } = cur_block.switch_stmts[0].clone().kind
+                } = switch_stmt.kind
                 {
                     match discr {
                         Copy(p) | Move(p) => {
