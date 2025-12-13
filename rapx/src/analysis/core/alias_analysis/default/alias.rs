@@ -1,4 +1,5 @@
 use super::{MopAAFact, MopAAResultMap, assign::*, graph::*, types::*, value::*};
+use crate::analysis::graphs::scc::Scc;
 use crate::def_id::*;
 use rustc_hir::def_id::DefId;
 use rustc_middle::{
@@ -101,7 +102,7 @@ impl<'tcx> MopGraph<'tcx> {
                                 }
                                 recursion_set.insert(target_id);
                                 let mut mop_graph = MopGraph::new(self.tcx, target_id);
-                                mop_graph.solve_scc();
+                                mop_graph.find_scc();
                                 mop_graph.check(0, fn_map, recursion_set);
                                 let ret_alias = mop_graph.ret_alias.clone();
                                 for assign in ret_alias.aliases().iter() {

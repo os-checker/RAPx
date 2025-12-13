@@ -1,18 +1,26 @@
 use super::bug_records::*;
 use crate::{
     analysis::{
-        core::alias_analysis::default::{assign::*, block::*, types::*, value::*},
+        core::alias_analysis::default::{
+            assign::*,
+            block::*,
+            graph::{SccHelper, scc_handler},
+            types::*,
+            value::*,
+        },
         core::ownedheap_analysis::OHAResultMap,
+        graphs::scc::Scc,
     },
     def_id::*,
 };
 use rustc_data_structures::fx::{FxHashMap, FxHashSet};
 use rustc_middle::mir::{
-    BasicBlock, Body, Const, Operand, Rvalue, StatementKind, TerminatorKind, UnwindAction,
+    BasicBlock, Body, Const, Operand, Rvalue, StatementKind, SwitchTargets,
+    TerminatorKind, UnwindAction,
 };
 use rustc_middle::ty::{self, TyCtxt, TypingEnv};
 use rustc_span::{Span, def_id::DefId};
-use std::{cmp::min, fmt, usize, vec::Vec};
+use std::{fmt, usize, vec::Vec};
 
 #[derive(Debug, Copy, Clone)]
 pub struct DropRecord {
@@ -431,106 +439,6 @@ impl<'tcx> SafeDropGraph<'tcx> {
         }
     }
 
-    /// This the default tarjan algorithm for SCC detection.
-    pub fn tarjan(
-        &mut self,
-        current: usize,
-        stack: &mut Vec<usize>,
-        dfn: &mut Vec<usize>,
-        low: &mut Vec<usize>,
-        time: &mut usize,
-    ) {
-        dfn[current] = *time; // the earlist arriving time of each node;
-        low[current] = *time; // the earlist arriving time of each node's next nodes;
-        *time += 1;
-        stack.push(current);
-        let nexts = self.blocks[current].next.clone();
-        for next in nexts {
-            if dfn[next] == 0 {
-                // the node has not been visited yet;
-                self.tarjan(next, stack, dfn, low, time);
-                low[current] = min(low[current], low[next]);
-            } else if stack.contains(&next) {
-                low[current] = min(low[current], dfn[next]);
-            }
-        }
-
-        // generate SCC
-        if dfn[current] == low[current] {
-            let mut assigned_locals = FxHashSet::<usize>::default();
-            for local in &self.blocks[current].assigned_locals {
-                assigned_locals.insert(*local);
-            }
-            let mut switch_conds = Vec::new();
-            let mut scc_block_set = FxHashSet::<usize>::default();
-            let init_block = self.blocks[current].clone();
-            loop {
-                let node = stack.pop().unwrap();
-                self.scc_indices[node] = current;
-                if node == current {
-                    // we have found all nodes of the current scc.
-                    break;
-                }
-                self.blocks[current].dominated_scc_bbs.push(node);
-                scc_block_set.insert(node);
-
-                // If the node contains a SwitchInt instruction, we should also consider the
-                // condition in the SwitchInt instruction of the SCC diminator.
-                // Example :
-                //  let p = ...
-                //  while x {
-                //      use(p)
-                //      if y {
-                //          drop(p);
-                //      }
-                //      x -= 1;
-                //  }
-                if let Some(place) = self.get_switch_conds(node) {
-                    if let Some(switch_stmt) = self.blocks[current].switch_stmt.clone() {
-                        switch_conds.push((place, switch_stmt));
-                    }
-                }
-
-                let nexts = self.blocks[node].next.clone();
-                for i in nexts {
-                    self.blocks[current].next.insert(i);
-                }
-            }
-            switch_conds.retain(|v| !assigned_locals.contains(&(v.0)));
-
-            if !switch_conds.is_empty() && switch_conds.len() == 1 {
-                let target_terminator = switch_conds[0].1.clone();
-
-                let TerminatorKind::SwitchInt { discr: _, targets } = target_terminator.kind else {
-                    unreachable!();
-                };
-
-                self.child_scc
-                    .insert(current, (init_block, targets, scc_block_set));
-            }
-
-            /* remove next nodes which are already in the current SCC */
-            self.blocks[current]
-                .next
-                .retain(|i| self.scc_indices[*i] != current);
-
-            /* To ensure a resonable order of blocks within one SCC,
-             * so that the scc can be directly used for followup analysis without referencing the
-             * original graph.
-             * */
-            self.blocks[current].dominated_scc_bbs.reverse();
-        }
-    }
-
-    // handle SCC
-    pub fn solve_scc(&mut self) {
-        let mut stack = Vec::<usize>::new();
-        let mut dfn = vec![0; self.blocks.len()];
-        let mut low = vec![0; self.blocks.len()];
-        let mut time = 0;
-        self.tarjan(0, &mut stack, &mut dfn, &mut low, &mut time);
-    }
-
     pub fn dfs_on_spanning_tree(
         &self,
         index: usize,
@@ -585,5 +493,43 @@ impl<'tcx> std::fmt::Display for SafeDropGraph<'tcx> {
         writeln!(f, "  child_scc: {:?}", self.child_scc)?;
         writeln!(f, "  terminators: {:?}", self.terminators)?;
         write!(f, "}}")
+    }
+}
+
+impl<'tcx> SccHelper<'tcx> for SafeDropGraph<'tcx> {
+    fn blocks(&self) -> &Vec<Block<'tcx>> {
+        &self.blocks
+    }
+    fn blocks_mut(&mut self) -> &mut Vec<Block<'tcx>> {
+        &mut self.blocks
+    }
+    fn scc_indices(&self) -> &[usize] {
+        &self.scc_indices
+    }
+    fn scc_indices_mut(&mut self) -> &mut [usize] {
+        &mut self.scc_indices
+    }
+    fn child_scc(&self) -> &FxHashMap<usize, (Block<'tcx>, SwitchTargets, FxHashSet<usize>)> {
+        &self.child_scc
+    }
+    fn child_scc_mut(
+        &mut self,
+    ) -> &mut FxHashMap<usize, (Block<'tcx>, SwitchTargets, FxHashSet<usize>)> {
+        &mut self.child_scc
+    }
+    fn switch_conds(&mut self, node: usize) -> Option<usize> {
+        self.get_switch_conds(node)
+    }
+}
+
+impl<'tcx> Scc for SafeDropGraph<'tcx> {
+    fn on_scc_found(&mut self, root: usize, scc_components: &[usize]) {
+        scc_handler(self, root, scc_components);
+    }
+    fn get_next(&mut self, root: usize) -> FxHashSet<usize> {
+        self.blocks[root].next.clone()
+    }
+    fn get_size(&mut self) -> usize {
+        self.blocks.len()
     }
 }

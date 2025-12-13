@@ -6,6 +6,7 @@ use crate::{
             ownedheap_analysis::OHAResultMap,
             range_analysis::{RangeAnalysis, default::RangeAnalyzer},
         },
+        graphs::scc::Scc,
         safedrop::graph::SafeDropGraph,
         senryx::{
             contracts::property::{CisRangeItem, PropertyContract},
@@ -685,7 +686,7 @@ impl<'tcx> BodyVisitor<'tcx> {
             } else {
                 path_constraints_option.unwrap()
             };
-        self.safedrop_graph.solve_scc();
+        self.safedrop_graph.find_scc();
         // If it's the first level analysis, then filter the paths not containing unsafe
         if self.visit_time == 0 {
             let contains_unsafe_blocks = get_all_std_unsafe_callees_block_id(self.tcx, self.def_id);

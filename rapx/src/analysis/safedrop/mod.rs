@@ -8,9 +8,12 @@ pub mod safedrop;
 use rustc_hir::def_id::DefId;
 use rustc_middle::ty::TyCtxt;
 
-use crate::analysis::core::{
-    alias_analysis::default::{AliasAnalyzer, MopAAResultMap},
-    ownedheap_analysis::{OHAResultMap, OwnedHeapAnalysis, default::OwnedHeapAnalyzer},
+use crate::analysis::{
+    core::{
+        alias_analysis::default::{AliasAnalyzer, MopAAResultMap},
+        ownedheap_analysis::{OHAResultMap, OwnedHeapAnalysis, default::OwnedHeapAnalyzer},
+    },
+    graphs::scc::Scc,
 };
 use graph::SafeDropGraph;
 use safedrop::*;
@@ -60,7 +63,7 @@ pub fn query_safedrop(
         let body = tcx.optimized_mir(def_id);
         let mut safedrop_graph = SafeDropGraph::new(body, tcx, def_id, adt_owner);
         rap_debug!("safedrop grah (raw): {}", safedrop_graph);
-        safedrop_graph.solve_scc();
+        safedrop_graph.find_scc();
         rap_debug!("safedrop graph (scc): {}", safedrop_graph);
         safedrop_graph.check(0, tcx, fn_map);
         if safedrop_graph.visit_times <= VISIT_LIMIT {

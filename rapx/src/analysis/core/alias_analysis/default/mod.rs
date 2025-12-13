@@ -7,7 +7,11 @@ pub mod types;
 pub mod value;
 
 use super::{AAFact, AAResult, AAResultMap, AliasAnalysis};
-use crate::{analysis::Analysis, def_id::*, utils::source::*};
+use crate::{
+    analysis::{Analysis, graphs::scc::Scc},
+    def_id::*,
+    utils::source::*,
+};
 use graph::MopGraph;
 use rustc_data_structures::fx::FxHashMap;
 use rustc_hir::def_id::DefId;
@@ -226,7 +230,7 @@ impl<'tcx> AliasAnalyzer<'tcx> {
 
         if self.tcx.is_mir_available(def_id) {
             let mut mop_graph = MopGraph::new(self.tcx, def_id);
-            mop_graph.solve_scc();
+            mop_graph.find_scc();
             let mut recursion_set = HashSet::default();
             mop_graph.check(0, &mut self.fn_map, &mut recursion_set);
             if mop_graph.visit_times > VISIT_LIMIT {

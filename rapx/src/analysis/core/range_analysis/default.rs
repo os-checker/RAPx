@@ -15,6 +15,7 @@ use crate::{
             },
             ssa_transform::*,
         },
+        graphs::scc::Scc,
     },
     rap_debug, rap_info,
 };
@@ -312,7 +313,7 @@ where
             let mut cg: ConstraintGraph<'tcx, T> =
                 ConstraintGraph::new_without_ssa(body_mut_ref, self.tcx, def_id);
             let mut graph = MopGraph::new(self.tcx, def_id);
-            graph.solve_scc();
+            graph.find_scc();
             let paths: Vec<Vec<usize>> = graph.get_all_branch_sub_blocks_paths();
             let result = cg.start_analyze_path_constraints(body_mut_ref, &paths);
             rap_debug!(
@@ -349,7 +350,7 @@ where
                     let mut cg: ConstraintGraph<'tcx, T> =
                         ConstraintGraph::new_without_ssa(body_mut_ref, self.tcx, def_id);
                     let mut graph = MopGraph::new(self.tcx, def_id);
-                    graph.solve_scc();
+                    graph.find_scc();
                     // rap_info!("child_scc: {:?}\n", graph.child_scc);
                     // rap_info!("scc_indices: {:?}\n", graph.scc_indices);
                     // rap_info!("blocks: {:?}\n", graph.blocks);

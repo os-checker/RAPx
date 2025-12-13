@@ -1,12 +1,15 @@
 use super::{MopAAResult, assign::*, block::*, types::*, value::*};
-use crate::utils::source::*;
+use crate::{analysis::graphs::scc::Scc, utils::source::*};
 use rustc_data_structures::fx::{FxHashMap, FxHashSet};
 use rustc_middle::{
-    mir::{BasicBlock, Const, Operand, Rvalue, StatementKind, TerminatorKind, UnwindAction},
+    mir::{
+        BasicBlock, Const, Operand, Rvalue, StatementKind, SwitchTargets,
+        TerminatorKind, UnwindAction,
+    },
     ty::{TyCtxt, TypingEnv},
 };
 use rustc_span::{Span, def_id::DefId};
-use std::{cmp::min, vec::Vec};
+use std::vec::Vec;
 
 pub struct MopGraph<'tcx> {
     pub def_id: DefId,
@@ -336,95 +339,6 @@ impl<'tcx> MopGraph<'tcx> {
         }
     }
 
-    pub fn tarjan(
-        &mut self,
-        current: usize,
-        stack: &mut Vec<usize>,
-        instack: &mut FxHashSet<usize>,
-        dfn: &mut Vec<usize>,
-        low: &mut Vec<usize>,
-        time: &mut usize,
-    ) {
-        dfn[current] = *time;
-        low[current] = *time;
-        *time += 1;
-        instack.insert(current);
-        stack.push(current);
-        let out_set = self.blocks[current].next.clone();
-        for target in out_set {
-            if dfn[target] == 0 {
-                self.tarjan(target, stack, instack, dfn, low, time);
-                low[current] = min(low[current], low[target]);
-            } else if instack.contains(&target) {
-                low[current] = min(low[current], dfn[target]);
-            }
-        }
-        // generate SCC
-        if dfn[current] == low[current] {
-            let mut assigned_locals = FxHashSet::<usize>::default();
-            let mut switch_conds = Vec::new();
-            let mut scc_block_set = FxHashSet::<usize>::default();
-            let init_block = self.blocks[current].clone();
-            loop {
-                let node = stack.pop().unwrap();
-                self.scc_indices[node] = current;
-                instack.remove(&node);
-                if current == node {
-                    // we have found all nodes of the current scc.
-                    break;
-                }
-                self.blocks[current].dominated_scc_bbs.push(node);
-                scc_block_set.insert(node);
-
-                for value in &self.blocks[current].assigned_locals {
-                    assigned_locals.insert(*value);
-                }
-                if let Some(place) = self.get_switch_conds(node) {
-                    if let Some(switch_stmt) = self.blocks[current].switch_stmt.clone() {
-                        switch_conds.push((place, switch_stmt));
-                    }
-                }
-
-                let nexts = self.blocks[node].next.clone();
-                for i in nexts {
-                    self.blocks[current].next.insert(i);
-                }
-            }
-            switch_conds.retain(|v| !assigned_locals.contains(&(v.0)));
-
-            if !switch_conds.is_empty() && switch_conds.len() == 1 {
-                let target_terminator = switch_conds[0].1.clone();
-
-                let TerminatorKind::SwitchInt { discr: _, targets } = target_terminator.kind else {
-                    unreachable!();
-                };
-
-                self.child_scc
-                    .insert(current, (init_block, targets, scc_block_set));
-            }
-            /* remove next nodes which are already in the current SCC */
-            self.blocks[current]
-                .next
-                .retain(|i| self.scc_indices[*i] != current);
-
-            /* To ensure a resonable order of blocks within one SCC,
-             * so that the scc can be directly used for followup analysis without referencing the
-             * original graph.
-             * */
-            self.blocks[current].dominated_scc_bbs.reverse();
-        }
-    }
-
-    // handle SCC
-    pub fn solve_scc(&mut self) {
-        let mut stack = Vec::<usize>::new();
-        let mut instack = FxHashSet::<usize>::default();
-        let mut dfn = vec![0_usize; self.blocks.len()];
-        let mut low = vec![0_usize; self.blocks.len()];
-        let mut time = 0;
-        self.tarjan(0, &mut stack, &mut instack, &mut dfn, &mut low, &mut time);
-    }
-
     pub fn dfs_on_spanning_tree(
         &self,
         index: usize,
@@ -511,6 +425,7 @@ impl<'tcx> MopGraph<'tcx> {
 
         expanded_path
     }
+
     pub fn get_switch_conds(&mut self, block_index: usize) -> Option<usize> {
         let block = &self.blocks[block_index];
         let switch_stmt = block.switch_stmt.as_ref()?;
@@ -523,5 +438,118 @@ impl<'tcx> MopGraph<'tcx> {
             Operand::Copy(p) | Operand::Move(p) => Some(self.projection(false, *p)),
             _ => None,
         }
+    }
+}
+
+pub trait SccHelper<'tcx> {
+    fn blocks(&self) -> &Vec<Block<'tcx>>; // or whatever the actual type is
+    fn blocks_mut(&mut self) -> &mut Vec<Block<'tcx>>;
+    fn scc_indices(&self) -> &[usize];
+    fn scc_indices_mut(&mut self) -> &mut [usize];
+    fn child_scc(&self) -> &FxHashMap<usize, (Block<'tcx>, SwitchTargets, FxHashSet<usize>)>;
+    fn child_scc_mut(
+        &mut self,
+    ) -> &mut FxHashMap<usize, (Block<'tcx>, SwitchTargets, FxHashSet<usize>)>;
+    fn switch_conds(&mut self, node: usize) -> Option<usize>;
+}
+
+impl<'tcx> SccHelper<'tcx> for MopGraph<'tcx> {
+    fn blocks(&self) -> &Vec<Block<'tcx>> {
+        &self.blocks
+    }
+    fn blocks_mut(&mut self) -> &mut Vec<Block<'tcx>> {
+        &mut self.blocks
+    }
+    fn scc_indices(&self) -> &[usize] {
+        &self.scc_indices
+    }
+    fn scc_indices_mut(&mut self) -> &mut [usize] {
+        &mut self.scc_indices
+    }
+    fn child_scc(&self) -> &FxHashMap<usize, (Block<'tcx>, SwitchTargets, FxHashSet<usize>)> {
+        &self.child_scc
+    }
+    fn child_scc_mut(
+        &mut self,
+    ) -> &mut FxHashMap<usize, (Block<'tcx>, SwitchTargets, FxHashSet<usize>)> {
+        &mut self.child_scc
+    }
+    fn switch_conds(&mut self, node: usize) -> Option<usize> {
+        self.get_switch_conds(node)
+    }
+}
+
+pub fn scc_handler<'tcx, T: SccHelper<'tcx>>(graph: &mut T, root: usize, scc_components: &[usize]) {
+    let mut assigned_locals = FxHashSet::<usize>::default();
+    for value in &graph.blocks()[root].assigned_locals {
+        assigned_locals.insert(*value);
+    }
+    let mut switch_conds = Vec::new();
+    let mut scc_block_set = FxHashSet::<usize>::default();
+    let original_root_block = graph.blocks()[root].clone();
+    for &node in &scc_components[1..] {
+        graph.scc_indices_mut()[node] = root;
+        graph.blocks_mut()[root].dominated_scc_bbs.push(node);
+        scc_block_set.insert(node);
+
+        // If the node contains a SwitchInt instruction, we should also consider the
+        // condition in the SwitchInt instruction of the SCC diminator.
+        // Example :
+        //  let p = ...
+        //  while x {
+        //      use(p)
+        //      if y {
+        //          drop(p);
+        //      }
+        //      x -= 1;
+        //  }
+        if let Some(place) = graph.switch_conds(node) {
+            if let Some(switch_stmt) = graph.blocks()[root].switch_stmt.clone() {
+                switch_conds.push((place, switch_stmt));
+            }
+        }
+
+        let nexts = graph.blocks()[node].next.clone();
+        for i in nexts {
+            graph.blocks_mut()[root].next.insert(i);
+        }
+    }
+
+    switch_conds.retain(|v| !assigned_locals.contains(&(v.0)));
+
+    if !switch_conds.is_empty() && switch_conds.len() == 1 {
+        let target_terminator = switch_conds[0].1.clone();
+
+        let TerminatorKind::SwitchInt { discr: _, targets } = target_terminator.kind else {
+            unreachable!();
+        };
+
+        graph
+            .child_scc_mut()
+            .insert(root, (original_root_block, targets, scc_block_set));
+    }
+
+    /* remove next nodes which are already in the current SCC */
+    let scc_indices = graph.scc_indices().to_vec();
+    graph.blocks_mut()[root]
+        .next
+        .retain(|i| scc_indices[*i] != root);
+
+    /* To ensure a resonable order of blocks within one SCC,
+     * so that the scc can be directly used for followup analysis without referencing the
+     * original graph.
+     * */
+    graph.blocks_mut()[root].dominated_scc_bbs.reverse();
+}
+
+impl<'tcx> Scc for MopGraph<'tcx> {
+    fn on_scc_found(&mut self, root: usize, scc_components: &[usize]) {
+        scc_handler(self, root, scc_components);
+    }
+    fn get_next(&mut self, root: usize) -> FxHashSet<usize> {
+        self.blocks[root].next.clone()
+    }
+    fn get_size(&mut self) -> usize {
+        self.blocks.len()
     }
 }
