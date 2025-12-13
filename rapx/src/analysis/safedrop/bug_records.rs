@@ -21,6 +21,7 @@ pub struct TyBug {
 /*
  * For each bug in the HashMap, the key is local of the value.
  */
+#[derive(Debug)]
 pub struct BugRecords {
     pub df_bugs: FxHashMap<usize, TyBug>,
     pub df_bugs_unwind: FxHashMap<usize, TyBug>,

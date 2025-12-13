@@ -164,7 +164,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
                 work_set.insert(bb_idx);
                 while !work_list.is_empty() {
                     let current_node = work_list.pop().unwrap();
-                    block_node.basic_blocks.push(current_node);
+                    block_node.dominated_scc_bbs.push(current_node);
                     let real_node = if current_node != init_idx {
                         self.blocks[current_node].clone()
                     } else {
@@ -233,7 +233,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
                     block_node.next.remove(&i);
                 }
 
-                for i in block_node.basic_blocks.clone() {
+                for i in block_node.dominated_scc_bbs.clone() {
                     self.alias_bb(i, tcx);
                     self.alias_bbcall(i, tcx, fn_map);
                     self.drop_check(i, tcx);
@@ -269,14 +269,14 @@ impl<'tcx> SafeDropGraph<'tcx> {
         order.push(vec![]);
 
         /* Handle cases if the current block is a merged scc block with sub block */
-        if !cur_block.basic_blocks.is_empty() {
+        if !cur_block.dominated_scc_bbs.is_empty() {
             match std::env::var_os("SAFEDROP") {
                 Some(val) if val == "0" => {
-                    order.push(cur_block.basic_blocks.clone());
+                    order.push(cur_block.dominated_scc_bbs.clone());
                 }
                 _ => {
                     self.calculate_scc_order(
-                        &mut cur_block.basic_blocks.clone(),
+                        &mut cur_block.dominated_scc_bbs.clone(),
                         &mut vec![],
                         &mut order,
                         &mut HashMap::new(),
@@ -332,7 +332,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
             let mut sw_target = 0; // Single target
             let mut path_discr_id = 0; // To avoid analyzing paths that cannot be reached with one enum type.
             let mut sw_targets = None; // Multiple targets of SwitchInt
-            if !cur_block.switch_stmts.is_empty() && cur_block.basic_blocks.is_empty() {
+            if !cur_block.switch_stmts.is_empty() && cur_block.dominated_scc_bbs.is_empty() {
                 if let TerminatorKind::SwitchInt {
                     ref discr,
                     ref targets,

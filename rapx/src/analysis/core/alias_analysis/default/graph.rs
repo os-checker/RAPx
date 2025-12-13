@@ -15,7 +15,7 @@ pub struct MopGraph<'tcx> {
     // contains all varibles (including fields) as values.
     pub values: Vec<Value>,
     // contains all blocks in the CFG
-    pub blocks: Vec<SccBlock<'tcx>>,
+    pub blocks: Vec<Block<'tcx>>,
     pub arg_size: usize,
     // we shrink a SCC into a node and use a scc node to represent the SCC.
     pub scc_indices: Vec<usize>,
@@ -29,7 +29,7 @@ pub struct MopGraph<'tcx> {
     pub child_scc: FxHashMap<
         usize,
         (
-            SccBlock<'tcx>,
+            Block<'tcx>,
             rustc_middle::mir::SwitchTargets,
             FxHashSet<usize>,
         ),
@@ -64,7 +64,7 @@ impl<'tcx> MopGraph<'tcx> {
         }
 
         let basicblocks = &body.basic_blocks;
-        let mut blocks = Vec::<SccBlock<'tcx>>::new();
+        let mut blocks = Vec::<Block<'tcx>>::new();
         let mut scc_indices = Vec::<usize>::new();
         let mut disc_map = FxHashMap::default();
         let mut terms = Vec::new();
@@ -74,7 +74,7 @@ impl<'tcx> MopGraph<'tcx> {
             scc_indices.push(i);
             let iter = BasicBlock::from(i);
             let terminator = basicblocks[iter].terminator.clone().unwrap();
-            let mut cur_bb = SccBlock::new(i, basicblocks[iter].is_cleanup);
+            let mut cur_bb = Block::new(i, basicblocks[iter].is_cleanup);
 
             // handle general statements
             for stmt in &basicblocks[iter].statements {
@@ -373,7 +373,7 @@ impl<'tcx> MopGraph<'tcx> {
                     // we have found all nodes of the current scc.
                     break;
                 }
-                self.blocks[index].basic_blocks.push(node);
+                self.blocks[index].dominated_scc_bbs.push(node);
                 scc_block_set.insert(node);
 
                 for value in &self.blocks[index].assigned_locals {
@@ -410,7 +410,7 @@ impl<'tcx> MopGraph<'tcx> {
              * so that the scc can be directly used for followup analysis without referencing the
              * original graph.
              * */
-            self.blocks[index].basic_blocks.reverse();
+            self.blocks[index].dominated_scc_bbs.reverse();
         }
     }
 
@@ -452,20 +452,20 @@ impl<'tcx> MopGraph<'tcx> {
         // 1. Get all execution paths
         let all_paths = self.get_paths();
 
-        // Use FxHashSet to collect all unique lists of basic_blocks.
+        // Use FxHashSet to collect all unique lists of dominated_scc_bbs.
         // Vec<usize> implements Hash, so it can be inserted directly into the set.
         let mut unique_branch_sub_blocks = FxHashSet::<Vec<usize>>::default();
 
         // 2. Iterate over each path
         for path in all_paths {
-            // 3. For the current path, get the corresponding basic_blocks for branch nodes
+            // 3. For the current path, get the corresponding dominated_scc_bbs for branch nodes
             let branch_blocks_for_this_path = self.get_branch_sub_blocks_for_path(&path);
             rap_debug!(
                 "Branch blocks for path {:?}: {:?}",
                 path,
                 branch_blocks_for_this_path
             );
-            // 4. Add these basic_blocks to the set
+            // 4. Add these dominated_scc_bbs to the set
             //    Use insert to avoid duplicates
             unique_branch_sub_blocks.insert(branch_blocks_for_this_path);
         }
@@ -497,9 +497,9 @@ impl<'tcx> MopGraph<'tcx> {
 
                 // c. If it has sub-blocks (i.e., it’s a multi-node SCC),
                 // append all sub-blocks to the path.
-                // basic_blocks are already ordered (topologically or near-topologically)
-                if !scc_node.basic_blocks.is_empty() {
-                    expanded_path.extend_from_slice(&scc_node.basic_blocks);
+                // dominated_scc_bbs are already ordered (topologically or near-topologically)
+                if !scc_node.dominated_scc_bbs.is_empty() {
+                    expanded_path.extend_from_slice(&scc_node.dominated_scc_bbs);
                 }
             } else {
                 // SCC already seen before (e.g., due to a cycle in the path):

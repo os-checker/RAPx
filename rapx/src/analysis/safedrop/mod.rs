@@ -59,7 +59,9 @@ pub fn query_safedrop(
     if tcx.is_mir_available(def_id) {
         let body = tcx.optimized_mir(def_id);
         let mut safedrop_graph = SafeDropGraph::new(body, tcx, def_id, adt_owner);
+        rap_debug!("safedrop grah (raw): {}", safedrop_graph);
         safedrop_graph.solve_scc();
+        rap_debug!("safedrop graph (scc): {}", safedrop_graph);
         safedrop_graph.check(0, tcx, fn_map);
         if safedrop_graph.visit_times <= VISIT_LIMIT {
             safedrop_graph.report_bugs();

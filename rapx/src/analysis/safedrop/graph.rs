@@ -12,7 +12,7 @@ use rustc_middle::mir::{
 };
 use rustc_middle::ty::{self, TyCtxt, TypingEnv};
 use rustc_span::{Span, def_id::DefId};
-use std::{cmp::min, usize, vec::Vec};
+use std::{fmt, cmp::min, usize, vec::Vec};
 
 #[derive(Debug, Copy, Clone)]
 pub struct DropRecord {
@@ -53,7 +53,7 @@ pub struct SafeDropGraph<'tcx> {
     // All blocks of the function; 
     // Each block is initialized as a basic block of the mir;
     // The blocks are then aggregated into strongly-connected components.
-    pub blocks: Vec<SccBlock<'tcx>>,
+    pub blocks: Vec<Block<'tcx>>,
     // The scc index of each basic block..
     pub scc_indices: Vec<usize>,
     // We record the constant value for path sensitivity.
@@ -68,10 +68,11 @@ pub struct SafeDropGraph<'tcx> {
     pub drop_record: Vec<DropRecord>,
     // analysis of heap item
     pub adt_owner: OHAResultMap,
+    // This is essentially the original basic block;
     pub child_scc: FxHashMap<
         usize,
         (
-            SccBlock<'tcx>,
+            Block<'tcx>,
             rustc_middle::mir::SwitchTargets,
             FxHashSet<usize>,
         ),
@@ -109,7 +110,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
         }
 
         let basicblocks = &body.basic_blocks;
-        let mut blocks = Vec::<SccBlock<'tcx>>::new();
+        let mut blocks = Vec::<Block<'tcx>>::new();
         let mut scc_indices = Vec::<usize>::new();
         let mut discriminants = FxHashMap::default();
         let mut terminators = Vec::new();
@@ -118,7 +119,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
         for i in 0..basicblocks.len() {
             scc_indices.push(i); // we temporarily assign the scc id of ith basicblock with i.
             let iter = BasicBlock::from(i);
-            let mut cur_bb = SccBlock::new(i, basicblocks[iter].is_cleanup);
+            let mut cur_bb = Block::new(i, basicblocks[iter].is_cleanup);
 
             // handle general statements
             for stmt in &basicblocks[iter].statements {
@@ -462,7 +463,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
                     // we have found all nodes of the current scc.
                     break;
                 }
-                self.blocks[current].basic_blocks.push(node);
+                self.blocks[current].dominated_scc_bbs.push(node);
                 scc_block_set.insert(node);
 
                 for local in &self.blocks[current].assigned_locals {
@@ -492,20 +493,13 @@ impl<'tcx> SafeDropGraph<'tcx> {
             }
 
             /* remove next nodes which are already in the current SCC */
-            let mut to_remove = Vec::new();
-            for i in self.blocks[current].next.iter() {
-                if self.scc_indices[*i] == current {
-                    to_remove.push(*i);
-                }
-            }
-            for i in to_remove {
-                self.blocks[current].next.remove(&i);
-            }
+            self.blocks[current].next.retain(|i| self.scc_indices[*i] != current);
+
             /* To ensure a resonable order of blocks within one SCC,
              * so that the scc can be directly used for followup analysis without referencing the
              * original graph.
              * */
-            self.blocks[current].basic_blocks.reverse();
+            self.blocks[current].dominated_scc_bbs.reverse();
         }
     }
 
@@ -560,5 +554,22 @@ impl<'tcx> SafeDropGraph<'tcx> {
         } else {
             None
         }
+    }
+}
+
+// Implement Display for debugging / printing purposes.
+// Prints selected fields: def_id, values, blocks, constants, discriminants, scc_indices, child_scc.
+impl<'tcx> std::fmt::Display for SafeDropGraph<'tcx> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "SafeDropGraph {{")?;
+        writeln!(f, "  def_id: {:?}", self.def_id)?;
+        writeln!(f, "  values: {:?}", self.values)?;
+        writeln!(f, "  blocks: {:?}", self.blocks)?;
+        writeln!(f, "  constants: {:?}", self.constants)?;
+        writeln!(f, "  discriminants: {:?}", self.discriminants)?;
+        writeln!(f, "  scc_indices: {:?}", self.scc_indices)?;
+        writeln!(f, "  child_scc: {:?}", self.child_scc)?;
+        writeln!(f, "  terminators: {:?}", self.terminators)?;
+        write!(f, "}}")
     }
 }

@@ -189,7 +189,7 @@ impl<'tcx> BodyVisitor<'tcx> {
                     fn_map,
                 );
                 let tem_basic_blocks = self.safedrop_graph.blocks[*block_index]
-                    .basic_blocks
+                    .dominated_scc_bbs
                     .clone();
                 if tem_basic_blocks.len() > 0 {
                     for sub_block in &tem_basic_blocks {
