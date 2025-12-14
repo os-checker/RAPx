@@ -559,7 +559,7 @@ pub fn scc_handler<'tcx, T: SccHelper<'tcx>>(graph: &mut T, root: usize, scc_com
         //  let p = ...
         //  while x {
         //      use(p)
-        //      if y {
+        //      if x {
         //          drop(p);
         //      }
         //      x -= 1;

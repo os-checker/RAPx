@@ -1,4 +1,3 @@
-
 use rustc_middle::{
     mir::{Operand, Place, ProjectionElem, TerminatorKind},
     ty::{self, TyCtxt, TypingEnv},
@@ -282,7 +281,10 @@ impl<'tcx> SafeDropGraph<'tcx> {
         }
         for index in ret_alias.rhs_fields().iter() {
             // if self.mop_graph.values[rv].alias[0] != rv {
-            if self.mop_graph.union_is_same(rv, self.mop_graph.alias_set[rv]) {
+            if self
+                .mop_graph
+                .union_is_same(rv, self.mop_graph.alias_set[rv])
+            {
                 rv = self.mop_graph.values[rv].index;
                 right_init = self.mop_graph.values[rv].local;
             }
@@ -307,4 +309,4 @@ impl<'tcx> SafeDropGraph<'tcx> {
         }
         self.merge_alias(lv, rv, 0);
     }
-    }
+}

@@ -1,5 +1,5 @@
 use super::graph::*;
-use crate::analysis::core::alias_analysis::default::MopAAResultMap;
+use crate::analysis::core::alias_analysis::default::{graph::SccHelper,MopAAResultMap};
 use rustc_data_structures::fx::FxHashSet;
 use rustc_middle::{
     mir::{
@@ -236,15 +236,10 @@ impl<'tcx> SafeDropGraph<'tcx> {
                 }
 
                 /* remove next nodes which are already in the current SCC */
-                let mut to_remove = Vec::new();
-                for i in block_node.next.iter() {
-                    if self.mop_graph.scc_indices[*i] == init_idx {
-                        to_remove.push(*i);
-                    }
-                }
-                for i in to_remove {
-                    block_node.next.remove(&i);
-                }
+                let scc_indices = self.mop_graph.scc_indices().to_vec();
+                self.mop_graph.blocks_mut()[init_idx]
+                    .next
+                    .retain(|i| scc_indices[*i] != init_idx);
 
                 for i in block_node.dominated_scc_bbs.clone() {
                     self.alias_bb(i);
@@ -479,16 +474,16 @@ impl<'tcx> SafeDropGraph<'tcx> {
         path: &mut Vec<usize>,
         ans: &mut Vec<Vec<usize>>,
         discriminants: &mut HashMap<usize, usize>,
-        idx: usize,
-        root: usize,
+        cur_bb: usize,
+        root_bb: usize,
         visit: &mut HashSet<usize>,
     ) {
-        if idx == root && !path.is_empty() {
+        if cur_bb == root_bb && !path.is_empty() {
             ans.push(path.clone());
             return;
         }
-        visit.insert(idx);
-        let term = &self.mop_graph.terminators[idx].clone();
+        visit.insert(cur_bb);
+        let term = &self.mop_graph.terminators[cur_bb].clone();
 
         match term {
             TerminatorKind::SwitchInt { discr, targets } => match discr {
@@ -515,7 +510,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
                                         ans,
                                         discriminants,
                                         target,
-                                        root,
+                                        root_bb,
                                         visit,
                                     );
                                     path.pop();
@@ -536,7 +531,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
                                     ans,
                                     discriminants,
                                     target,
-                                    root,
+                                    root_bb,
                                     visit,
                                 );
                                 discriminants.remove(&father);
@@ -559,7 +554,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
                                         ans,
                                         discriminants,
                                         target,
-                                        root,
+                                        root_bb,
                                         visit,
                                     );
                                     path.pop();
@@ -580,7 +575,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
                                     ans,
                                     discriminants,
                                     target,
-                                    root,
+                                    root_bb,
                                     visit,
                                 );
                                 discriminants.remove(&place);
@@ -598,7 +593,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
                                     ans,
                                     discriminants,
                                     target,
-                                    root,
+                                    root_bb,
                                     visit,
                                 );
                                 discriminants.remove(&place);
@@ -610,21 +605,21 @@ impl<'tcx> SafeDropGraph<'tcx> {
                 _ => {}
             },
             _ => {
-                for bidx in self.mop_graph.blocks[idx].next.clone() {
-                    if !scc.contains(&bidx) && bidx != root {
+                for next in self.mop_graph.blocks[cur_bb].next.clone() {
+                    if !scc.contains(&next) && next != root_bb {
                         continue;
                     }
-                    if bidx != root {
-                        path.push(bidx);
-                        self.calculate_scc_order(scc, path, ans, discriminants, bidx, root, visit);
+                    if next != root_bb {
+                        path.push(next);
+                        self.calculate_scc_order(scc, path, ans, discriminants, next, root_bb, visit);
                         path.pop();
                     } else {
-                        self.calculate_scc_order(scc, path, ans, discriminants, bidx, root, visit);
+                        self.calculate_scc_order(scc, path, ans, discriminants, next, root_bb, visit);
                     }
                 }
             }
         }
 
-        visit.remove(&idx);
+        visit.remove(&cur_bb);
     }
 }

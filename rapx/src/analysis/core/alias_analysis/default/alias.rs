@@ -416,4 +416,3 @@ impl<'tcx> MopGraph<'tcx> {
         false
     }
 }
-
