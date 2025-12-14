@@ -237,7 +237,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
 
                 /* remove next nodes which are already in the current SCC */
                 let scc_indices = self.mop_graph.scc_indices().to_vec();
-                self.mop_graph.blocks_mut()[init_idx]
+                block_node
                     .next
                     .retain(|i| scc_indices[*i] != init_idx);
 
