@@ -14,36 +14,36 @@ use crate::analysis::{
 impl<'tcx> SafeDropGraph<'tcx> {
     /* alias analysis for a single block */
     pub fn alias_bb(&mut self, bb_index: usize) {
-        for stmt in self.blocks[bb_index].const_value.clone() {
-            self.constants.insert(stmt.0, stmt.1);
+        for stmt in self.mop_graph.blocks[bb_index].const_value.clone() {
+            self.mop_graph.constants.insert(stmt.0, stmt.1);
         }
-        let cur_block = self.blocks[bb_index].clone();
+        let cur_block = self.mop_graph.blocks[bb_index].clone();
         for assign in cur_block.assignments {
             let mut lv_idx = self.projection(false, assign.lv);
             let rv_idx = self.projection(true, assign.rv);
             match assign.atype {
                 AssignType::Variant => {
-                    self.alias_set[lv_idx] = rv_idx;
+                    self.mop_graph.alias_set[lv_idx] = rv_idx;
                     continue;
                 }
                 AssignType::InitBox => {
-                    lv_idx = *self.values[lv_idx].fields.get(&0).unwrap();
+                    lv_idx = *self.mop_graph.values[lv_idx].fields.get(&0).unwrap();
                 }
                 _ => {} // Copy or Move
             }
-            self.fill_birth(lv_idx, self.scc_indices[bb_index] as isize);
-            if self.values[lv_idx].local != self.values[rv_idx].local {
+            self.fill_birth(lv_idx, self.mop_graph.scc_indices[bb_index] as isize);
+            if self.mop_graph.values[lv_idx].local != self.mop_graph.values[rv_idx].local {
                 rap_debug!(
                     "merge alias: lv_idx/local:{}/{}, rv_idx/local:{}/{}",
                     lv_idx,
-                    self.values[lv_idx].local,
+                    self.mop_graph.values[lv_idx].local,
                     rv_idx,
-                    self.values[rv_idx].local
+                    self.mop_graph.values[rv_idx].local
                 );
                 self.merge_alias(lv_idx, rv_idx, 0);
                 rap_debug!(
                     "Alias sets: {:?}",
-                    convert_alias_to_sets(self.alias_set.clone())
+                    convert_alias_to_sets(self.mop_graph.alias_set.clone())
                 );
             }
             self.uaf_check(bb_index, rv_idx, assign.span, false);
@@ -52,7 +52,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
 
     /* Check the aliases introduced by the terminators (function call) of a scc block */
     pub fn alias_bbcall(&mut self, bb_index: usize, tcx: TyCtxt<'tcx>, fn_map: &MopAAResultMap) {
-        let cur_block = self.blocks[bb_index].clone();
+        let cur_block = self.mop_graph.blocks[bb_index].clone();
         for call in cur_block.calls {
             if let TerminatorKind::Call {
                 ref func,
@@ -66,11 +66,11 @@ impl<'tcx> SafeDropGraph<'tcx> {
             {
                 if let Operand::Constant(constant) = func {
                     let lv = self.projection(false, destination.clone());
-                    self.values[lv].birth = self.scc_indices[bb_index] as isize;
+                    self.mop_graph.values[lv].birth = self.mop_graph.scc_indices[bb_index] as isize;
                     let mut merge_vec = Vec::new();
                     merge_vec.push(lv);
                     let mut may_drop_flag = 0;
-                    if self.values[lv].may_drop {
+                    if self.mop_graph.values[lv].may_drop {
                         may_drop_flag += 1;
                     }
                     for arg in args {
@@ -80,7 +80,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
                                 //self.uaf_check(rv, call.source_info.span, p.local.as_usize(), true);
                                 self.uaf_check(bb_index, rv, call.source_info.span, true);
                                 merge_vec.push(rv);
-                                if self.values[rv].may_drop {
+                                if self.mop_graph.values[rv].may_drop {
                                     may_drop_flag += 1;
                                 }
                             }
@@ -88,7 +88,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
                                 let rv = self.projection(true, p.clone());
                                 self.uaf_check(bb_index, rv, call.source_info.span, true);
                                 merge_vec.push(rv);
-                                if self.values[rv].may_drop {
+                                if self.mop_graph.values[rv].may_drop {
                                     may_drop_flag += 1;
                                 }
                             }
@@ -110,15 +110,15 @@ impl<'tcx> SafeDropGraph<'tcx> {
                                     }
                                 }
                             } else {
-                                if self.values[lv].may_drop {
+                                if self.mop_graph.values[lv].may_drop {
                                     if self.corner_handle(lv, &merge_vec, *target_id) {
                                         continue;
                                     }
                                     let mut right_set = Vec::new();
                                     for rv in &merge_vec {
-                                        if self.values[*rv].may_drop
+                                        if self.mop_graph.values[*rv].may_drop
                                             && lv != *rv
-                                            && self.values[lv].is_ptr()
+                                            && self.mop_graph.values[lv].is_ptr()
                                         {
                                             right_set.push(*rv);
                                         }
@@ -135,15 +135,15 @@ impl<'tcx> SafeDropGraph<'tcx> {
         }
     }
 
-    // assign to the variable _x, we will set the birth of _x and its child self.values a new birth.
+    // assign to the variable _x, we will set the birth of _x and its child self.mop_graph.values a new birth.
     pub fn fill_birth(&mut self, node: usize, birth: isize) {
-        self.values[node].birth = birth;
-        for i in 0..self.values.len() {
-            if self.union_is_same(i, node) && self.values[i].birth == -1 {
-                self.values[i].birth = birth;
+        self.mop_graph.values[node].birth = birth;
+        for i in 0..self.mop_graph.values.len() {
+            if self.union_is_same(i, node) && self.mop_graph.values[i].birth == -1 {
+                self.mop_graph.values[i].birth = birth;
             }
         }
-        for i in self.values[node].fields.clone().into_iter() {
+        for i in self.mop_graph.values[node].fields.clone().into_iter() {
             self.fill_birth(i.1, birth); //i.1 corresponds to the local field.
         }
     }
@@ -158,35 +158,46 @@ impl<'tcx> SafeDropGraph<'tcx> {
         let mut local = place.local.as_usize();
         let mut proj_id = local;
         for proj in place.projection {
-            let new_id = self.values.len();
+            let new_id = self.mop_graph.values.len();
             match proj {
                 ProjectionElem::Deref => {
-                    //proj_id = self.values[proj_id].alias[0];
-                    proj_id = self.alias_set[proj_id];
+                    //proj_id = self.mop_graph.values[proj_id].alias[0];
+                    proj_id = self.mop_graph.alias_set[proj_id];
                 }
                 /*
                  * Objective: 2 = 1.0; 0 = 2.0; => 0 = 1.0.0
                  */
                 ProjectionElem::Field(field, ty) => {
-                    if is_right && self.alias_set[proj_id] != proj_id {
-                        proj_id = self.alias_set[proj_id];
-                        local = self.values[proj_id].local;
+                    if is_right && self.mop_graph.alias_set[proj_id] != proj_id {
+                        proj_id = self.mop_graph.alias_set[proj_id];
+                        local = self.mop_graph.values[proj_id].local;
                     }
                     let field_idx = field.as_usize();
-                    if !self.values[proj_id].fields.contains_key(&field_idx) {
-                        let ty_env = TypingEnv::post_analysis(self.tcx, self.def_id);
-                        let need_drop = ty.needs_drop(self.tcx, ty_env);
-                        let may_drop = !is_not_drop(self.tcx, ty);
+                    if !self.mop_graph.values[proj_id]
+                        .fields
+                        .contains_key(&field_idx)
+                    {
+                        let ty_env =
+                            TypingEnv::post_analysis(self.mop_graph.tcx, self.mop_graph.def_id);
+                        let need_drop = ty.needs_drop(self.mop_graph.tcx, ty_env);
+                        let may_drop = !is_not_drop(self.mop_graph.tcx, ty);
                         let mut node = Value::new(new_id, local, need_drop, need_drop || may_drop);
                         node.kind = kind(ty);
-                        node.birth = self.values[proj_id].birth;
+                        node.birth = self.mop_graph.values[proj_id].birth;
                         node.field_id = field_idx;
-                        self.values[proj_id].fields.insert(field_idx, node.index);
-                        self.alias_set.push(self.alias_set.len());
+                        self.mop_graph.values[proj_id]
+                            .fields
+                            .insert(field_idx, node.index);
+                        self.mop_graph
+                            .alias_set
+                            .push(self.mop_graph.alias_set.len());
                         self.drop_record.push(self.drop_record[proj_id]);
-                        self.values.push(node);
+                        self.mop_graph.values.push(node);
                     }
-                    proj_id = *self.values[proj_id].fields.get(&field_idx).unwrap();
+                    proj_id = *self.mop_graph.values[proj_id]
+                        .fields
+                        .get(&field_idx)
+                        .unwrap();
                 }
                 _ => {}
             }
@@ -196,13 +207,13 @@ impl<'tcx> SafeDropGraph<'tcx> {
 
     //instruction to assign alias for a variable.
     pub fn merge_alias(&mut self, lv: usize, rv: usize, depth: usize) {
-        // if self.values[lv].alias.len() > 1 {
-        //     let mut alias_clone = self.values[rv].alias.clone();
-        //     self.values[lv].alias.append(&mut alias_clone);
+        // if self.mop_graph.values[lv].alias.len() > 1 {
+        //     let mut alias_clone = self.mop_graph.values[rv].alias.clone();
+        //     self.mop_graph.values[lv].alias.append(&mut alias_clone);
         // } else {
-        //     self.values[lv].alias = self.values[rv].alias.clone();
+        //     self.mop_graph.values[lv].alias = self.mop_graph.values[rv].alias.clone();
         // }
-        if lv >= self.values.len() || rv >= self.values.len() {
+        if lv >= self.mop_graph.values.len() || rv >= self.mop_graph.values.len() {
             return;
         }
         self.union_merge(lv, rv);
@@ -219,23 +230,25 @@ impl<'tcx> SafeDropGraph<'tcx> {
             return;
         }
 
-        for field in self.values[rv].fields.clone().into_iter() {
-            if !self.values[lv].fields.contains_key(&field.0) {
+        for field in self.mop_graph.values[rv].fields.clone().into_iter() {
+            if !self.mop_graph.values[lv].fields.contains_key(&field.0) {
                 let mut node = Value::new(
-                    self.values.len(),
-                    self.values[lv].local,
-                    self.values[field.1].need_drop,
-                    self.values[field.1].may_drop,
+                    self.mop_graph.values.len(),
+                    self.mop_graph.values[lv].local,
+                    self.mop_graph.values[field.1].need_drop,
+                    self.mop_graph.values[field.1].may_drop,
                 );
-                node.kind = self.values[field.1].kind;
-                node.birth = self.values[lv].birth;
+                node.kind = self.mop_graph.values[field.1].kind;
+                node.birth = self.mop_graph.values[lv].birth;
                 node.field_id = field.0;
-                self.values[lv].fields.insert(field.0, node.index);
-                self.alias_set.push(self.alias_set.len());
+                self.mop_graph.values[lv].fields.insert(field.0, node.index);
+                self.mop_graph
+                    .alias_set
+                    .push(self.mop_graph.alias_set.len());
                 self.drop_record.push(DropRecord::false_record());
-                self.values.push(node);
+                self.mop_graph.values.push(node);
             }
-            let lv_field = *(self.values[lv].fields.get(&field.0).unwrap());
+            let lv_field = *(self.mop_graph.values[lv].fields.get(&field.0).unwrap());
             self.merge_alias(lv_field, field.1, depth + 1);
         }
     }
@@ -251,39 +264,47 @@ impl<'tcx> SafeDropGraph<'tcx> {
         let mut lv = left_init;
         let mut rv = right_init;
         for index in ret_alias.lhs_fields().iter() {
-            if self.values[lv].fields.contains_key(&index) == false {
+            if self.mop_graph.values[lv].fields.contains_key(&index) == false {
                 let need_drop = ret_alias.lhs_need_drop;
                 let may_drop = ret_alias.lhs_may_drop;
-                let mut node = Value::new(self.values.len(), left_init, need_drop, may_drop);
+                let mut node =
+                    Value::new(self.mop_graph.values.len(), left_init, need_drop, may_drop);
                 node.kind = TyKind::RawPtr;
-                node.birth = self.values[lv].birth;
+                node.birth = self.mop_graph.values[lv].birth;
                 node.field_id = *index;
-                self.values[lv].fields.insert(*index, node.index);
-                self.alias_set.push(self.alias_set.len());
+                self.mop_graph.values[lv].fields.insert(*index, node.index);
+                self.mop_graph
+                    .alias_set
+                    .push(self.mop_graph.alias_set.len());
                 self.drop_record.push(self.drop_record[lv]);
-                self.values.push(node);
+                self.mop_graph.values.push(node);
             }
-            lv = *self.values[lv].fields.get(&index).unwrap();
+            lv = *self.mop_graph.values[lv].fields.get(&index).unwrap();
         }
         for index in ret_alias.rhs_fields().iter() {
-            // if self.values[rv].alias[0] != rv {
-            if self.union_is_same(rv, self.alias_set[rv]) {
-                rv = self.values[rv].index;
-                right_init = self.values[rv].local;
+            // if self.mop_graph.values[rv].alias[0] != rv {
+            if self.union_is_same(rv, self.mop_graph.alias_set[rv]) {
+                rv = self.mop_graph.values[rv].index;
+                right_init = self.mop_graph.values[rv].local;
             }
-            if !self.values[rv].fields.contains_key(&index) {
+            if !self.mop_graph.values[rv].fields.contains_key(&index) {
                 let need_drop = ret_alias.rhs_need_drop;
                 let may_drop = ret_alias.rhs_may_drop;
-                let mut node = Value::new(self.alias_set.len(), right_init, need_drop, may_drop);
+                let mut node = Value::new(
+                    self.mop_graph.alias_set.len(),
+                    right_init,
+                    need_drop,
+                    may_drop,
+                );
                 node.kind = TyKind::RawPtr;
-                node.birth = self.values[rv].birth;
+                node.birth = self.mop_graph.values[rv].birth;
                 node.field_id = *index;
-                self.values[rv].fields.insert(*index, node.index);
-                self.alias_set.push(self.values.len());
+                self.mop_graph.values[rv].fields.insert(*index, node.index);
+                self.mop_graph.alias_set.push(self.mop_graph.values.len());
                 self.drop_record.push(self.drop_record[rv]);
-                self.values.push(node);
+                self.mop_graph.values.push(node);
             }
-            rv = *self.values[rv].fields.get(&index).unwrap();
+            rv = *self.mop_graph.values[rv].fields.get(&index).unwrap();
         }
         self.merge_alias(lv, rv, 0);
     }
@@ -291,8 +312,8 @@ impl<'tcx> SafeDropGraph<'tcx> {
     #[inline(always)]
     pub fn union_find(&mut self, e: usize) -> usize {
         let mut r = e;
-        while self.alias_set[r] != r {
-            r = self.alias_set[r];
+        while self.mop_graph.alias_set[r] != r {
+            r = self.mop_graph.alias_set[r];
         }
         r
     }
@@ -303,14 +324,14 @@ impl<'tcx> SafeDropGraph<'tcx> {
         let f2 = self.union_find(e2);
 
         if f1 < f2 {
-            self.alias_set[f2] = f1;
+            self.mop_graph.alias_set[f2] = f1;
         }
         if f1 > f2 {
-            self.alias_set[f1] = f2;
+            self.mop_graph.alias_set[f1] = f2;
         }
 
-        for member in 0..self.alias_set.len() {
-            self.alias_set[member] = self.union_find(self.alias_set[member]);
+        for member in 0..self.mop_graph.alias_set.len() {
+            self.mop_graph.alias_set[member] = self.union_find(self.mop_graph.alias_set[member]);
         }
     }
 
@@ -324,7 +345,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
     #[inline(always)]
     pub fn get_alias_set(&mut self, e: usize) -> HashSet<usize> {
         let mut alias_set = HashSet::new();
-        for i in 0..self.alias_set.len() {
+        for i in 0..self.mop_graph.alias_set.len() {
             if i == e {
                 continue;
             }
@@ -337,7 +358,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
 
     #[inline(always)]
     pub fn union_has_alias(&mut self, e: usize) -> bool {
-        for i in 0..self.alias_set.len() {
+        for i in 0..self.mop_graph.alias_set.len() {
             if i == e {
                 continue;
             }

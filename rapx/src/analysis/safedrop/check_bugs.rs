@@ -11,7 +11,7 @@ use rustc_span::{Span, symbol::Symbol};
 
 impl<'tcx> SafeDropGraph<'tcx> {
     pub fn report_bugs(&self) {
-        let filename = get_filename(self.tcx, self.def_id);
+        let filename = get_filename(self.mop_graph.tcx, self.mop_graph.def_id);
         match filename {
             Some(filename) => {
                 if filename.contains(".cargo") {
@@ -23,21 +23,31 @@ impl<'tcx> SafeDropGraph<'tcx> {
         if self.bug_records.is_bug_free() {
             return;
         }
-        let fn_name = match get_name(self.tcx, self.def_id) {
+        let fn_name = match get_name(self.mop_graph.tcx, self.mop_graph.def_id) {
             Some(name) => name,
             None => Symbol::intern("no symbol available"),
         };
-        let body = self.tcx.optimized_mir(self.def_id);
-        self.bug_records.df_bugs_output(body, fn_name, self.span);
-        self.bug_records.uaf_bugs_output(body, fn_name, self.span);
-        self.bug_records.dp_bug_output(body, fn_name, self.span);
-        let _ = generate_mir_cfg_dot(self.tcx, self.def_id, &self.alias_set);
-        rap_debug!("Alias: {:?}", convert_alias_to_sets(self.alias_set.clone()));
+        let body = self.mop_graph.tcx.optimized_mir(self.mop_graph.def_id);
+        self.bug_records
+            .df_bugs_output(body, fn_name, self.mop_graph.span);
+        self.bug_records
+            .uaf_bugs_output(body, fn_name, self.mop_graph.span);
+        self.bug_records
+            .dp_bug_output(body, fn_name, self.mop_graph.span);
+        let _ = generate_mir_cfg_dot(
+            self.mop_graph.tcx,
+            self.mop_graph.def_id,
+            &self.mop_graph.alias_set,
+        );
+        rap_debug!(
+            "Alias: {:?}",
+            convert_alias_to_sets(self.mop_graph.alias_set.clone())
+        );
     }
 
     pub fn uaf_check(&mut self, bb_idx: usize, idx: usize, span: Span, is_func_call: bool) {
-        let local = self.values[idx].local;
-        if !self.values[idx].may_drop {
+        let local = self.mop_graph.values[idx].local;
+        if !self.mop_graph.values[idx].may_drop {
             return;
         }
         rap_debug!(
@@ -58,11 +68,11 @@ impl<'tcx> SafeDropGraph<'tcx> {
         if !self.drop_record[idx].is_dropped {
             return;
         }
-        if self.values[idx].is_ptr() && !is_func_call {
+        if self.mop_graph.values[idx].is_ptr() && !is_func_call {
             return;
         }
 
-        let confidence = match self.values[idx].kind {
+        let confidence = match self.mop_graph.values[idx].kind {
             TyKind::CornerCase => 0,
             _ => 99,
         };
@@ -84,10 +94,10 @@ impl<'tcx> SafeDropGraph<'tcx> {
     }
 
     pub fn sync_drop_record(&mut self, idx: usize) {
-        if idx >= self.values.len() {
+        if idx >= self.mop_graph.values.len() {
             return;
         }
-        let local = self.values[idx].local;
+        let local = self.mop_graph.values[idx].local;
         if self.drop_record[local].is_dropped {
             self.drop_record[idx] = self.drop_record[local];
         }
@@ -101,7 +111,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
     }
 
     pub fn df_check(&mut self, bb_idx: usize, idx: usize, span: Span, flag_cleanup: bool) -> bool {
-        let local = self.values[idx].local;
+        let local = self.mop_graph.values[idx].local;
         // If the value has not been dropped, it is not a double free.
         rap_debug!(
             "df_check: bb_idx = {:?}, idx = {:?}, local = {:?}",
@@ -109,11 +119,14 @@ impl<'tcx> SafeDropGraph<'tcx> {
             idx,
             local
         );
-        rap_debug!("df_check: is alive? {:?}", self.values[idx].is_alive());
-        if self.values[idx].is_alive() {
+        rap_debug!(
+            "df_check: is alive? {:?}",
+            self.mop_graph.values[idx].is_alive()
+        );
+        if self.mop_graph.values[idx].is_alive() {
             return false;
         }
-        let confidence = match self.values[idx].kind {
+        let confidence = match self.mop_graph.values[idx].kind {
             TyKind::CornerCase => 0,
             _ => 99,
         };
@@ -145,9 +158,9 @@ impl<'tcx> SafeDropGraph<'tcx> {
 
     pub fn dp_check(&mut self, flag_cleanup: bool) {
         if flag_cleanup {
-            for arg_idx in 1..self.arg_size + 1 {
-                if self.values[arg_idx].is_ptr() && self.drop_record[arg_idx].is_dropped {
-                    let confidence = match self.values[arg_idx].kind {
+            for arg_idx in 1..self.mop_graph.arg_size + 1 {
+                if self.mop_graph.values[arg_idx].is_ptr() && self.drop_record[arg_idx].is_dropped {
+                    let confidence = match self.mop_graph.values[arg_idx].kind {
                         TyKind::CornerCase => 0,
                         _ => 99,
                     };
@@ -156,7 +169,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
                         drop_id: self.drop_record[arg_idx].drop_via_local,
                         trigger_bb: usize::MAX,
                         trigger_id: arg_idx,
-                        span: self.span.clone(),
+                        span: self.mop_graph.span.clone(),
                         confidence,
                     };
                     self.bug_records.dp_bugs_unwind.insert(arg_idx, bug);
@@ -167,8 +180,8 @@ impl<'tcx> SafeDropGraph<'tcx> {
                 }
             }
         } else {
-            if self.values[0].may_drop && self.drop_record[0].is_dropped {
-                let confidence = match self.values[0].kind {
+            if self.mop_graph.values[0].may_drop && self.drop_record[0].is_dropped {
+                let confidence = match self.mop_graph.values[0].kind {
                     TyKind::CornerCase => 0,
                     _ => 99,
                 };
@@ -177,15 +190,17 @@ impl<'tcx> SafeDropGraph<'tcx> {
                     drop_id: self.drop_record[0].drop_via_local,
                     trigger_bb: usize::MAX,
                     trigger_id: 0,
-                    span: self.span.clone(),
+                    span: self.mop_graph.span.clone(),
                     confidence,
                 };
                 self.bug_records.dp_bugs.insert(0, bug);
                 rap_debug!("Find dangling pointer 0; add to record.");
             } else {
-                for arg_idx in 0..self.arg_size + 1 {
-                    if self.values[arg_idx].is_ptr() && self.drop_record[arg_idx].is_dropped {
-                        let confidence = match self.values[arg_idx].kind {
+                for arg_idx in 0..self.mop_graph.arg_size + 1 {
+                    if self.mop_graph.values[arg_idx].is_ptr()
+                        && self.drop_record[arg_idx].is_dropped
+                    {
+                        let confidence = match self.mop_graph.values[arg_idx].kind {
                             TyKind::CornerCase => 0,
                             _ => 99,
                         };
@@ -194,7 +209,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
                             drop_id: self.drop_record[arg_idx].drop_via_local,
                             trigger_bb: usize::MAX,
                             trigger_id: arg_idx,
-                            span: self.span.clone(),
+                            span: self.mop_graph.span.clone(),
                             confidence,
                         };
                         self.bug_records.dp_bugs.insert(arg_idx, bug);
@@ -220,28 +235,29 @@ impl<'tcx> SafeDropGraph<'tcx> {
         flag_cleanup: bool,
     ) {
         //Rc drop
-        if self.values[idx].is_corner_case() {
+        if self.mop_graph.values[idx].is_corner_case() {
             return;
         }
         //check if there is a double free bug.
-        if !flag_inprocess && self.df_check(bb_idx, idx, self.span, flag_cleanup) {
+        if !flag_inprocess && self.df_check(bb_idx, idx, self.mop_graph.span, flag_cleanup) {
             return;
         }
         if !self.drop_record[idx].is_dropped {
-            self.drop_record[idx] = DropRecord::new(true, bb_idx, self.values[via_idx].local);
+            self.drop_record[idx] =
+                DropRecord::new(true, bb_idx, self.mop_graph.values[via_idx].local);
             rap_debug!(
                 "add_to_drop_record: idx = {}, {:?}",
                 idx,
                 self.drop_record[idx]
             );
             //drop their alias
-            for i in 0..self.values.len() {
-                if !self.union_is_same(idx, i) || i == idx || self.values[i].is_ref() {
+            for i in 0..self.mop_graph.values.len() {
+                if !self.union_is_same(idx, i) || i == idx || self.mop_graph.values[i].is_ref() {
                     continue;
                 }
                 self.add_to_drop_record(
                     i,
-                    self.values[via_idx].local,
+                    self.mop_graph.values[via_idx].local,
                     birth,
                     info,
                     true,
@@ -255,13 +271,15 @@ impl<'tcx> SafeDropGraph<'tcx> {
         //drop the fields of the root node.
         //alias flag is used to avoid the fields of the alias are dropped repeatly.
         if !flag_inprocess {
-            for (_, field_idx) in self.values[idx].fields.clone() {
-                if self.values[idx].is_tuple() && !self.values[field_idx].need_drop {
+            for (_, field_idx) in self.mop_graph.values[idx].fields.clone() {
+                if self.mop_graph.values[idx].is_tuple()
+                    && !self.mop_graph.values[field_idx].need_drop
+                {
                     continue;
                 }
                 self.add_to_drop_record(
                     field_idx,
-                    self.values[via_idx].local,
+                    self.mop_graph.values[via_idx].local,
                     birth,
                     info,
                     false,
@@ -271,8 +289,9 @@ impl<'tcx> SafeDropGraph<'tcx> {
             }
         }
         //SCC.
-        if self.values[idx].birth < birth as isize && self.values[idx].may_drop {
-            self.values[idx].drop();
+        if self.mop_graph.values[idx].birth < birth as isize && self.mop_graph.values[idx].may_drop
+        {
+            self.mop_graph.values[idx].drop();
         }
     }
 
@@ -281,7 +300,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
         let mut node_ref = value;
         while node_ref.field_id != usize::MAX {
             field_id_seq.push(node_ref.field_id);
-            node_ref = &self.values[value.father];
+            node_ref = &self.mop_graph.values[value.father];
         }
         return field_id_seq;
     }

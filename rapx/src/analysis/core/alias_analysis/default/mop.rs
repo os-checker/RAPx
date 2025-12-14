@@ -24,13 +24,13 @@ impl<'tcx> MopGraph<'tcx> {
     ) {
         /* duplicate the status before visiting a path; */
         let backup_values = self.values.clone(); // duplicate the status when visiting different paths;
-        let backup_constant = self.constant.clone();
+        let backup_constant = self.constants.clone();
         let backup_alias_set = self.alias_set.clone();
         self.check(bb_index, fn_map, recursion_set);
         /* restore after visit */
         self.alias_set = backup_alias_set;
         self.values = backup_values;
-        self.constant = backup_constant;
+        self.constants = backup_constant;
     }
     pub fn split_check_with_cond(
         &mut self,
@@ -42,15 +42,15 @@ impl<'tcx> MopGraph<'tcx> {
     ) {
         /* duplicate the status before visiting a path; */
         let backup_values = self.values.clone(); // duplicate the status when visiting different paths;
-        let backup_constant = self.constant.clone();
+        let backup_constant = self.constants.clone();
         let backup_alias_set = self.alias_set.clone();
         /* add control-sensitive indicator to the path status */
-        self.constant.insert(path_discr_id, path_discr_val);
+        self.constants.insert(path_discr_id, path_discr_val);
         self.check(bb_index, fn_map, recursion_set);
         /* restore after visit */
         self.alias_set = backup_alias_set;
         self.values = backup_values;
-        self.constant = backup_constant;
+        self.constants = backup_constant;
     }
 
     // the core function of the safedrop.
@@ -75,7 +75,7 @@ impl<'tcx> MopGraph<'tcx> {
 
             for enum_idx in cur_targets.all_targets() {
                 let backup_values = self.values.clone();
-                let backup_constant = self.constant.clone();
+                let backup_constant = self.constants.clone();
 
                 let mut block_node = if bb_index == init_index {
                     init_block.clone()
@@ -194,7 +194,7 @@ impl<'tcx> MopGraph<'tcx> {
                 }
 
                 self.values = backup_values;
-                self.constant = backup_constant;
+                self.constants = backup_constant;
             }
 
             return;
@@ -224,14 +224,14 @@ impl<'tcx> MopGraph<'tcx> {
         }
 
         let backup_values = self.values.clone(); // duplicate the status when visiting different paths;
-        let backup_constant = self.constant.clone();
+        let backup_constant = self.constants.clone();
         let backup_alias_set = self.alias_set.clone();
         let backup_fn_map = fn_map.clone();
         let backup_recursion_set = recursion_set.clone();
         for scc_each in order {
             self.alias_set = backup_alias_set.clone();
             self.values = backup_values.clone();
-            self.constant = backup_constant.clone();
+            self.constants = backup_constant.clone();
             *fn_map = backup_fn_map.clone();
             *recursion_set = backup_recursion_set.clone();
 
@@ -286,7 +286,7 @@ impl<'tcx> MopGraph<'tcx> {
                             rap_debug!("place {:?}", place);
                             match place_ty.ty.kind() {
                                 TyKind::Bool => {
-                                    if let Some(constant) = self.constant.get(&place) {
+                                    if let Some(constant) = self.constants.get(&place) {
                                         if *constant != usize::MAX {
                                             single_target = true;
                                             sw_val = *constant;
@@ -297,9 +297,9 @@ impl<'tcx> MopGraph<'tcx> {
                                 }
                                 _ => {
                                     if let Some(father) =
-                                        self.disc_map.get(&self.values[place].local)
+                                        self.discriminants.get(&self.values[place].local)
                                     {
-                                        if let Some(constant) = self.constant.get(father) {
+                                        if let Some(constant) = self.constants.get(father) {
                                             if *constant != usize::MAX {
                                                 single_target = true;
                                                 sw_val = *constant;
@@ -392,7 +392,7 @@ impl<'tcx> MopGraph<'tcx> {
         scc: &Vec<usize>,
         path: &mut Vec<usize>,
         ans: &mut Vec<Vec<usize>>,
-        disc_map: &mut HashMap<usize, usize>,
+        discriminants: &mut HashMap<usize, usize>,
         idx: usize,
         root: usize,
         visit: &mut HashSet<usize>,
@@ -402,15 +402,15 @@ impl<'tcx> MopGraph<'tcx> {
             return;
         }
         visit.insert(idx);
-        let term = &self.terms[idx].clone();
+        let terminator = &self.terminators[idx].clone();
 
-        match term {
+        match terminator {
             TerminatorKind::SwitchInt { discr, targets } => match discr {
                 Copy(p) | Move(p) => {
                     let place = self.projection(false, *p);
-                    if let Some(father) = self.disc_map.get(&self.values[place].local) {
+                    if let Some(father) = self.discriminants.get(&self.values[place].local) {
                         let father = *father;
-                        if let Some(constant) = disc_map.get(&father) {
+                        if let Some(constant) = discriminants.get(&father) {
                             let constant = *constant;
                             for t in targets.iter() {
                                 if t.0 as usize == constant {
@@ -420,7 +420,13 @@ impl<'tcx> MopGraph<'tcx> {
                                     }
                                     path.push(target);
                                     self.calculate_scc_order(
-                                        scc, path, ans, disc_map, target, root, visit,
+                                        scc,
+                                        path,
+                                        ans,
+                                        discriminants,
+                                        target,
+                                        root,
+                                        visit,
                                     );
                                     path.pop();
                                 }
@@ -433,16 +439,22 @@ impl<'tcx> MopGraph<'tcx> {
                                     continue;
                                 }
                                 path.push(target);
-                                disc_map.insert(father, constant);
+                                discriminants.insert(father, constant);
                                 self.calculate_scc_order(
-                                    scc, path, ans, disc_map, target, root, visit,
+                                    scc,
+                                    path,
+                                    ans,
+                                    discriminants,
+                                    target,
+                                    root,
+                                    visit,
                                 );
-                                disc_map.remove(&father);
+                                discriminants.remove(&father);
                                 path.pop();
                             }
                         }
                     } else {
-                        if let Some(constant) = disc_map.get(&place) {
+                        if let Some(constant) = discriminants.get(&place) {
                             let constant = *constant;
                             for t in targets.iter() {
                                 if t.0 as usize == constant {
@@ -452,7 +464,13 @@ impl<'tcx> MopGraph<'tcx> {
                                     }
                                     path.push(target);
                                     self.calculate_scc_order(
-                                        scc, path, ans, disc_map, target, root, visit,
+                                        scc,
+                                        path,
+                                        ans,
+                                        discriminants,
+                                        target,
+                                        root,
+                                        visit,
                                     );
                                     path.pop();
                                 }
@@ -465,11 +483,17 @@ impl<'tcx> MopGraph<'tcx> {
                                     continue;
                                 }
                                 path.push(target);
-                                disc_map.insert(place, constant);
+                                discriminants.insert(place, constant);
                                 self.calculate_scc_order(
-                                    scc, path, ans, disc_map, target, root, visit,
+                                    scc,
+                                    path,
+                                    ans,
+                                    discriminants,
+                                    target,
+                                    root,
+                                    visit,
                                 );
-                                disc_map.remove(&place);
+                                discriminants.remove(&place);
                                 path.pop();
                             }
 
@@ -477,11 +501,17 @@ impl<'tcx> MopGraph<'tcx> {
                             let target = targets.otherwise().as_usize();
                             if !path.contains(&target) {
                                 path.push(target);
-                                disc_map.insert(place, constant);
+                                discriminants.insert(place, constant);
                                 self.calculate_scc_order(
-                                    scc, path, ans, disc_map, target, root, visit,
+                                    scc,
+                                    path,
+                                    ans,
+                                    discriminants,
+                                    target,
+                                    root,
+                                    visit,
                                 );
-                                disc_map.remove(&place);
+                                discriminants.remove(&place);
                                 path.pop();
                             }
                         }
@@ -496,10 +526,10 @@ impl<'tcx> MopGraph<'tcx> {
                     }
                     if bidx != root {
                         path.push(bidx);
-                        self.calculate_scc_order(scc, path, ans, disc_map, bidx, root, visit);
+                        self.calculate_scc_order(scc, path, ans, discriminants, bidx, root, visit);
                         path.pop();
                     } else {
-                        self.calculate_scc_order(scc, path, ans, disc_map, bidx, root, visit);
+                        self.calculate_scc_order(scc, path, ans, discriminants, bidx, root, visit);
                     }
                 }
             }

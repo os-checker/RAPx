@@ -123,7 +123,7 @@ impl<'tcx> BodyVisitor<'tcx> {
         Self {
             tcx,
             def_id,
-            safedrop_graph: SafeDropGraph::new(body, tcx, def_id, OHAResultMap::default()),
+            safedrop_graph: SafeDropGraph::new(tcx, def_id, OHAResultMap::default()),
             abstract_states: HashMap::new(),
             unsafe_callee_report: HashMap::new(),
             local_ty: HashMap::new(),
@@ -189,7 +189,7 @@ impl<'tcx> BodyVisitor<'tcx> {
                     next_block,
                     fn_map,
                 );
-                let tem_basic_blocks = self.safedrop_graph.blocks[*block_index]
+                let tem_basic_blocks = self.safedrop_graph.mop_graph.blocks[*block_index]
                     .dominated_scc_bbs
                     .clone();
                 if tem_basic_blocks.len() > 0 {
@@ -678,7 +678,7 @@ impl<'tcx> BodyVisitor<'tcx> {
         let mut path_constraints: HashMap<Vec<usize>, Vec<(_, _, _)>> =
             if path_constraints_option.is_none() {
                 let mut results = HashMap::new();
-                let paths: Vec<Vec<usize>> = self.safedrop_graph.get_paths();
+                let paths: Vec<Vec<usize>> = self.safedrop_graph.mop_graph.get_paths();
                 for path in paths {
                     results.insert(path, Vec::new());
                 }
@@ -686,7 +686,7 @@ impl<'tcx> BodyVisitor<'tcx> {
             } else {
                 path_constraints_option.unwrap()
             };
-        self.safedrop_graph.find_scc();
+        self.safedrop_graph.mop_graph.find_scc();
         // If it's the first level analysis, then filter the paths not containing unsafe
         if self.visit_time == 0 {
             let contains_unsafe_blocks = get_all_std_unsafe_callees_block_id(self.tcx, self.def_id);
