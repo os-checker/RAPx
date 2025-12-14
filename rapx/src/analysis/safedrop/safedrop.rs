@@ -1,5 +1,5 @@
 use super::graph::*;
-use crate::analysis::core::alias_analysis::default::{graph::SccHelper,MopAAResultMap};
+use crate::analysis::core::alias_analysis::default::{MopAAResultMap, graph::SccHelper};
 use rustc_data_structures::fx::FxHashSet;
 use rustc_middle::{
     mir::{
@@ -82,13 +82,13 @@ impl<'tcx> SafeDropGraph<'tcx> {
     }
 
     pub fn split_check(&mut self, bb_idx: usize, tcx: TyCtxt<'tcx>, fn_map: &MopAAResultMap) {
-        /* duplicate the status before visiting a path; */
-        let backup_values = self.mop_graph.values.clone(); // duplicate the status when visiting different paths;
+        /* duplicate the status before visiteding a path; */
+        let backup_values = self.mop_graph.values.clone(); // duplicate the status when visiteding different paths;
         let backup_constant = self.mop_graph.constants.clone();
         let backup_alias_set = self.mop_graph.alias_set.clone();
         let backup_drop_record = self.drop_record.clone();
         self.check(bb_idx, tcx, fn_map);
-        /* restore after visit */
+        /* restore after visited */
         self.mop_graph.values = backup_values;
         self.mop_graph.constants = backup_constant;
         self.mop_graph.alias_set = backup_alias_set;
@@ -103,8 +103,8 @@ impl<'tcx> SafeDropGraph<'tcx> {
         tcx: TyCtxt<'tcx>,
         fn_map: &MopAAResultMap,
     ) {
-        /* duplicate the status before visiting a path; */
-        let backup_values = self.mop_graph.values.clone(); // duplicate the status when visiting different paths;
+        /* duplicate the status before visiteding a path; */
+        let backup_values = self.mop_graph.values.clone(); // duplicate the status when visiteding different paths;
         let backup_constant = self.mop_graph.constants.clone();
         let backup_alias_set = self.mop_graph.alias_set.clone();
         let backup_drop_record = self.drop_record.clone();
@@ -113,7 +113,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
             .constants
             .insert(path_discr_id, path_discr_val);
         self.check(bb_idx, tcx, fn_map);
-        /* restore after visit */
+        /* restore after visited */
         self.mop_graph.values = backup_values;
         self.mop_graph.constants = backup_constant;
         self.mop_graph.alias_set = backup_alias_set;
@@ -126,7 +126,9 @@ impl<'tcx> SafeDropGraph<'tcx> {
         if self.mop_graph.visit_times > VISIT_LIMIT {
             return;
         }
-        let cur_block = self.mop_graph.blocks[self.mop_graph.scc_indices[bb_idx]].clone();
+        let scc_idx = self.mop_graph.scc_indices[bb_idx];
+        let cur_block = self.mop_graph.blocks[scc_idx].clone();
+        rap_debug!("Checking bb: {}, scc_idx: {}, scc: {:?}, child_scc: {:?}", bb_idx, scc_idx, cur_block.dominated_scc_bbs.clone(), self.mop_graph.child_scc.get(&scc_idx));
         self.alias_bb(self.mop_graph.scc_indices[bb_idx]);
         self.alias_bbcall(self.mop_graph.scc_indices[bb_idx], tcx, fn_map);
         self.drop_check(self.mop_graph.scc_indices[bb_idx], tcx);
@@ -134,18 +136,18 @@ impl<'tcx> SafeDropGraph<'tcx> {
         if self
             .mop_graph
             .child_scc
-            .get(&self.mop_graph.scc_indices[bb_idx])
+            .get(&scc_idx)
             .is_some()
         {
-            let init_idx = self.mop_graph.scc_indices[bb_idx];
+            rap_debug!("handle child scc for bb {}", bb_idx);
             let (init_block, cur_targets, scc_block_set) =
-                self.mop_graph.child_scc.get(&init_idx).unwrap().clone();
+                self.mop_graph.child_scc.get(&scc_idx).unwrap().clone();
 
             for enum_idx in cur_targets.all_targets() {
                 let backup_values = self.mop_graph.values.clone();
                 let backup_constant = self.mop_graph.constants.clone();
 
-                let mut block_node = if bb_idx == init_idx {
+                let mut block_node = if bb_idx == scc_idx {
                     init_block.clone()
                 } else {
                     self.mop_graph.blocks[bb_idx].clone()
@@ -172,7 +174,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
                 while !work_list.is_empty() {
                     let current_node = work_list.pop().unwrap();
                     block_node.dominated_scc_bbs.push(current_node);
-                    let real_node = if current_node != init_idx {
+                    let real_node = if current_node != scc_idx {
                         self.mop_graph.blocks[current_node].clone()
                     } else {
                         init_block.clone()
@@ -237,9 +239,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
 
                 /* remove next nodes which are already in the current SCC */
                 let scc_indices = self.mop_graph.scc_indices().to_vec();
-                block_node
-                    .next
-                    .retain(|i| scc_indices[*i] != init_idx);
+                block_node.next.retain(|i| scc_indices[*i] != scc_idx);
 
                 for i in block_node.dominated_scc_bbs.clone() {
                     self.alias_bb(i);
@@ -273,39 +273,33 @@ impl<'tcx> SafeDropGraph<'tcx> {
             return;
         }
 
-        let mut order = vec![];
-        order.push(vec![]);
+        let mut paths_in_scc = vec![];
+        paths_in_scc.push(vec![]);
+        let start_bb = bb_idx;
+        let cur_bb = bb_idx;
 
         /* Handle cases if the current block is a merged scc block with sub block */
-        if !cur_block.dominated_scc_bbs.is_empty() {
-            match std::env::var_os("SAFEDROP") {
-                Some(val) if val == "0" => {
-                    order.push(cur_block.dominated_scc_bbs.clone());
-                }
-                _ => {
-                    self.calculate_scc_order(
-                        &mut cur_block.dominated_scc_bbs.clone(),
-                        &mut vec![],
-                        &mut order,
-                        &mut HashMap::new(),
-                        bb_idx,
-                        bb_idx,
-                        &mut HashSet::new(),
-                    );
-                }
-            }
-        }
+        self.calculate_scc_order(
+            start_bb,
+            cur_bb,
+            &mut cur_block.dominated_scc_bbs.clone(),
+            &mut vec![],
+            &mut HashMap::new(),
+            &mut HashSet::new(),
+            &mut paths_in_scc,
+        );
+        rap_debug!("Paths in scc {:?}: {:?}", cur_block.dominated_scc_bbs.clone(), paths_in_scc);
 
-        let backup_values = self.mop_graph.values.clone(); // duplicate the status when visiting different paths;
+        let backup_values = self.mop_graph.values.clone(); // duplicate the status when visiteding different paths;
         let backup_constant = self.mop_graph.constants.clone();
         let backup_alias_set = self.mop_graph.alias_set.clone();
-        for scc_each in order {
+        for each_path in paths_in_scc {
             self.mop_graph.alias_set = backup_alias_set.clone();
             self.mop_graph.values = backup_values.clone();
             self.mop_graph.constants = backup_constant.clone();
 
-            if !scc_each.is_empty() {
-                for idx in scc_each {
+            if !each_path.is_empty() {
+                for idx in each_path {
                     self.alias_bb(idx);
                     self.alias_bbcall(idx, tcx, fn_map);
                 }
@@ -468,158 +462,189 @@ impl<'tcx> SafeDropGraph<'tcx> {
         rap_debug!("Alias: {:?}", self.mop_graph.alias_set);
     }
 
+    ///This function performs a DFS traversal across the SCC, extracting all possible orderings
+    /// that respect the control-flow structure and SwitchInt branching, taking into account
+    /// enum discriminants and constant branches.
     pub fn calculate_scc_order(
         &mut self,
+        start_bb: usize,
+        cur_bb: usize,
         scc: &Vec<usize>,
         path: &mut Vec<usize>,
-        ans: &mut Vec<Vec<usize>>,
-        discriminants: &mut HashMap<usize, usize>,
-        cur_bb: usize,
-        root_bb: usize,
-        visit: &mut HashSet<usize>,
+        stacked_discriminants: &mut HashMap<usize, usize>,
+        visited: &mut HashSet<usize>, // for cycle detection.
+        paths_in_scc: &mut Vec<Vec<usize>>,
     ) {
-        if cur_bb == root_bb && !path.is_empty() {
-            ans.push(path.clone());
+        // If we have returned to the start_bb and the path is non-empty, we've found a cycle/path.
+        if cur_bb == start_bb && !path.is_empty() {
+            paths_in_scc.push(path.clone());
             return;
         }
-        visit.insert(cur_bb);
+        // Mark the current block as visited in this path to avoid cycles in this DFS.
+        visited.insert(cur_bb);
+        // Retrieve the terminator for this block (the outgoing control flow).
         let term = &self.mop_graph.terminators[cur_bb].clone();
 
         match term {
-            TerminatorKind::SwitchInt { discr, targets } => match discr {
-                Copy(p) | Move(p) => {
-                    let place = self.projection(false, *p);
-                    if let Some(father) = self
-                        .mop_graph
-                        .discriminants
-                        .get(&self.mop_graph.values[place].local)
-                    {
-                        let father = *father;
-                        if let Some(constant) = discriminants.get(&father) {
-                            let constant = *constant;
-                            for t in targets.iter() {
-                                if t.0 as usize == constant {
+            TerminatorKind::SwitchInt { discr, targets } => {
+                match discr {
+                    // Case 1: The discriminant is a place (value held in memory, e.g., enum field)
+                    Copy(p) | Move(p) => {
+                        let place = self.projection(false, *p);
+                        if let Some(real_discr_local) = self
+                            .mop_graph
+                            .discriminants
+                            .get(&self.mop_graph.values[place].local)
+                        {
+                            let real_discr_local = *real_discr_local;
+                            // There are already restrictions related to the discriminant; 
+                            // Only the branch that meets the restriction can be taken.
+                            if let Some(constant) = stacked_discriminants.get(&real_discr_local) {
+                                let constant = *constant;
+                                for branch in targets.iter() { 
+                                    // branch is a tupele (value, target)
+                                    if branch.0 as usize == constant {
+                                        let target = branch.1.as_usize();
+                                        if path.contains(&target) {
+                                            continue;
+                                        }
+                                        path.push(target);
+                                        self.calculate_scc_order(
+                                            start_bb,
+                                            target,
+                                            scc,
+                                            path,
+                                            stacked_discriminants,
+                                            visited,
+                                            paths_in_scc,
+                                        );
+                                        path.pop();
+                                    }
+                                }
+                            } else {
+                                // No restrictions yet;
+                                // Visit each branch with new condition add to the
+                                // stacked_discriminants.
+                                for branch in targets.iter() {
+                                    let constant = branch.0 as usize;
+                                    let target = branch.1.as_usize();
+                                    if path.contains(&target) {
+                                        continue;
+                                    }
+                                    path.push(target);
+                                    stacked_discriminants.insert(real_discr_local, constant);
+                                    self.calculate_scc_order(
+                                        start_bb,
+                                        target,
+                                        scc,
+                                        path,
+                                        stacked_discriminants,
+                                        visited,
+                                        paths_in_scc,
+                                    );
+                                    stacked_discriminants.remove(&real_discr_local);
+                                    path.pop();
+                                }
+                            }
+                        } else {
+                            if let Some(constant) = stacked_discriminants.get(&place) {
+                                let constant = *constant;
+                                for t in targets.iter() {
+                                    if t.0 as usize == constant {
+                                        let target = t.1.as_usize();
+                                        if path.contains(&target) {
+                                            continue;
+                                        }
+                                        path.push(target);
+                                        self.calculate_scc_order(
+                                            start_bb,
+                                            target,
+                                            scc,
+                                            path,
+                                            stacked_discriminants,
+                                            visited,
+                                            paths_in_scc,
+                                        );
+                                        path.pop();
+                                    }
+                                }
+                            } else {
+                                for t in targets.iter() {
+                                    let constant = t.0 as usize;
                                     let target = t.1.as_usize();
                                     if path.contains(&target) {
                                         continue;
                                     }
                                     path.push(target);
+                                    stacked_discriminants.insert(place, constant);
                                     self.calculate_scc_order(
+                                        start_bb,
+                                        target,
                                         scc,
                                         path,
-                                        ans,
-                                        discriminants,
-                                        target,
-                                        root_bb,
-                                        visit,
+                                        stacked_discriminants,
+                                        visited,
+                                        paths_in_scc,
                                     );
+                                    stacked_discriminants.remove(&place);
                                     path.pop();
                                 }
-                            }
-                        } else {
-                            for t in targets.iter() {
-                                let constant = t.0 as usize;
-                                let target = t.1.as_usize();
-                                if path.contains(&target) {
-                                    continue;
-                                }
-                                path.push(target);
-                                discriminants.insert(father, constant);
-                                self.calculate_scc_order(
-                                    scc,
-                                    path,
-                                    ans,
-                                    discriminants,
-                                    target,
-                                    root_bb,
-                                    visit,
-                                );
-                                discriminants.remove(&father);
-                                path.pop();
-                            }
-                        }
-                    } else {
-                        if let Some(constant) = discriminants.get(&place) {
-                            let constant = *constant;
-                            for t in targets.iter() {
-                                if t.0 as usize == constant {
-                                    let target = t.1.as_usize();
-                                    if path.contains(&target) {
-                                        continue;
-                                    }
-                                    path.push(target);
-                                    self.calculate_scc_order(
-                                        scc,
-                                        path,
-                                        ans,
-                                        discriminants,
-                                        target,
-                                        root_bb,
-                                        visit,
-                                    );
-                                    path.pop();
-                                }
-                            }
-                        } else {
-                            for t in targets.iter() {
-                                let constant = t.0 as usize;
-                                let target = t.1.as_usize();
-                                if path.contains(&target) {
-                                    continue;
-                                }
-                                path.push(target);
-                                discriminants.insert(place, constant);
-                                self.calculate_scc_order(
-                                    scc,
-                                    path,
-                                    ans,
-                                    discriminants,
-                                    target,
-                                    root_bb,
-                                    visit,
-                                );
-                                discriminants.remove(&place);
-                                path.pop();
-                            }
 
-                            let constant = targets.iter().len();
-                            let target = targets.otherwise().as_usize();
-                            if !path.contains(&target) {
-                                path.push(target);
-                                discriminants.insert(place, constant);
-                                self.calculate_scc_order(
-                                    scc,
-                                    path,
-                                    ans,
-                                    discriminants,
-                                    target,
-                                    root_bb,
-                                    visit,
-                                );
-                                discriminants.remove(&place);
-                                path.pop();
+                                let constant = targets.iter().len();
+                                let target = targets.otherwise().as_usize();
+                                if !path.contains(&target) {
+                                    path.push(target);
+                                    stacked_discriminants.insert(place, constant);
+                                    self.calculate_scc_order(
+                                        start_bb,
+                                        target,
+                                        scc,
+                                        path,
+                                        stacked_discriminants,
+                                        visited,
+                                        paths_in_scc,
+                                    );
+                                    stacked_discriminants.remove(&place);
+                                    path.pop();
+                                }
                             }
                         }
                     }
+                    _ => {}
                 }
-                _ => {}
-            },
+            }
             _ => {
                 for next in self.mop_graph.blocks[cur_bb].next.clone() {
-                    if !scc.contains(&next) && next != root_bb {
+                    if !scc.contains(&next) && next != start_bb {
                         continue;
                     }
-                    if next != root_bb {
+                    if next != start_bb {
                         path.push(next);
-                        self.calculate_scc_order(scc, path, ans, discriminants, next, root_bb, visit);
+                        self.calculate_scc_order(
+                            start_bb,
+                            next,
+                            scc,
+                            path,
+                            stacked_discriminants,
+                            visited,
+                            paths_in_scc,
+                        );
                         path.pop();
                     } else {
-                        self.calculate_scc_order(scc, path, ans, discriminants, next, root_bb, visit);
+                        self.calculate_scc_order(
+                            start_bb,
+                            next,
+                            scc,
+                            path,
+                            stacked_discriminants,
+                            visited,
+                            paths_in_scc,
+                        );
                     }
                 }
             }
         }
 
-        visit.remove(&cur_bb);
+        visited.remove(&cur_bb);
     }
 }
