@@ -356,7 +356,7 @@ impl<'tcx> MopGraph<'tcx> {
         field_id_seq
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn union_find(&mut self, e: usize) -> usize {
         let mut r = e;
         while self.alias_set[r] != r {
@@ -365,7 +365,7 @@ impl<'tcx> MopGraph<'tcx> {
         r
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn union_merge(&mut self, e1: usize, e2: usize) {
         let f1 = self.union_find(e1);
         let f2 = self.union_find(e2);
@@ -382,10 +382,38 @@ impl<'tcx> MopGraph<'tcx> {
         }
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn union_is_same(&mut self, e1: usize, e2: usize) -> bool {
         let f1 = self.union_find(e1);
         let f2 = self.union_find(e2);
         f1 == f2
     }
+
+    #[inline(always)]
+    pub fn get_alias_set(&mut self, e: usize) -> HashSet<usize> {
+        let mut alias_set = HashSet::new();
+        for i in 0..self.alias_set.len() {
+            if i == e {
+                continue;
+            }
+            if self.union_is_same(e, i) {
+                alias_set.insert(i);
+            }
+        }
+        alias_set
+    }
+
+    #[inline(always)]
+    pub fn union_has_alias(&mut self, e: usize) -> bool {
+        for i in 0..self.alias_set.len() {
+            if i == e {
+                continue;
+            }
+            if self.union_is_same(e, i) {
+                return true;
+            }
+        }
+        false
+    }
 }
+

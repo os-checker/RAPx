@@ -1,4 +1,3 @@
-use std::collections::HashSet;
 
 use rustc_middle::{
     mir::{Operand, Place, ProjectionElem, TerminatorKind},
@@ -139,7 +138,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
     pub fn fill_birth(&mut self, node: usize, birth: isize) {
         self.mop_graph.values[node].birth = birth;
         for i in 0..self.mop_graph.values.len() {
-            if self.union_is_same(i, node) && self.mop_graph.values[i].birth == -1 {
+            if self.mop_graph.union_is_same(i, node) && self.mop_graph.values[i].birth == -1 {
                 self.mop_graph.values[i].birth = birth;
             }
         }
@@ -216,7 +215,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
         if lv >= self.mop_graph.values.len() || rv >= self.mop_graph.values.len() {
             return;
         }
-        self.union_merge(lv, rv);
+        self.mop_graph.union_merge(lv, rv);
 
         let max_field_depth = match std::env::var_os("SAFEDROP") {
             Some(val) if val == "0" => 10,
@@ -283,7 +282,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
         }
         for index in ret_alias.rhs_fields().iter() {
             // if self.mop_graph.values[rv].alias[0] != rv {
-            if self.union_is_same(rv, self.mop_graph.alias_set[rv]) {
+            if self.mop_graph.union_is_same(rv, self.mop_graph.alias_set[rv]) {
                 rv = self.mop_graph.values[rv].index;
                 right_init = self.mop_graph.values[rv].local;
             }
@@ -308,64 +307,4 @@ impl<'tcx> SafeDropGraph<'tcx> {
         }
         self.merge_alias(lv, rv, 0);
     }
-
-    #[inline(always)]
-    pub fn union_find(&mut self, e: usize) -> usize {
-        let mut r = e;
-        while self.mop_graph.alias_set[r] != r {
-            r = self.mop_graph.alias_set[r];
-        }
-        r
     }
-
-    #[inline(always)]
-    pub fn union_merge(&mut self, e1: usize, e2: usize) {
-        let f1 = self.union_find(e1);
-        let f2 = self.union_find(e2);
-
-        if f1 < f2 {
-            self.mop_graph.alias_set[f2] = f1;
-        }
-        if f1 > f2 {
-            self.mop_graph.alias_set[f1] = f2;
-        }
-
-        for member in 0..self.mop_graph.alias_set.len() {
-            self.mop_graph.alias_set[member] = self.union_find(self.mop_graph.alias_set[member]);
-        }
-    }
-
-    #[inline(always)]
-    pub fn union_is_same(&mut self, e1: usize, e2: usize) -> bool {
-        let f1 = self.union_find(e1);
-        let f2 = self.union_find(e2);
-        f1 == f2
-    }
-
-    #[inline(always)]
-    pub fn get_alias_set(&mut self, e: usize) -> HashSet<usize> {
-        let mut alias_set = HashSet::new();
-        for i in 0..self.mop_graph.alias_set.len() {
-            if i == e {
-                continue;
-            }
-            if self.union_is_same(e, i) {
-                alias_set.insert(i);
-            }
-        }
-        alias_set
-    }
-
-    #[inline(always)]
-    pub fn union_has_alias(&mut self, e: usize) -> bool {
-        for i in 0..self.mop_graph.alias_set.len() {
-            if i == e {
-                continue;
-            }
-            if self.union_is_same(e, i) {
-                return true;
-            }
-        }
-        false
-    }
-}

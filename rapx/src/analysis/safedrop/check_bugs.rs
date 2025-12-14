@@ -101,7 +101,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
         if self.drop_record[local].is_dropped {
             self.drop_record[idx] = self.drop_record[local];
         }
-        let aliases = self.get_alias_set(local);
+        let aliases = self.mop_graph.get_alias_set(local);
         for i in aliases {
             if self.drop_record[i].is_dropped {
                 self.drop_record[idx] = self.drop_record[i];
@@ -252,7 +252,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
             );
             //drop their alias
             for i in 0..self.mop_graph.values.len() {
-                if !self.union_is_same(idx, i) || i == idx || self.mop_graph.values[i].is_ref() {
+                if !self.mop_graph.union_is_same(idx, i) || i == idx || self.mop_graph.values[i].is_ref() {
                     continue;
                 }
                 self.add_to_drop_record(
