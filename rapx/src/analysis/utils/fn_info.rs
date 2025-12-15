@@ -78,16 +78,6 @@ pub fn check_visibility(tcx: TyCtxt, func_defid: DefId) -> bool {
     if !tcx.visibility(func_defid).is_public() {
         return false;
     }
-    // if func_defid.is_local() {
-    //     if let Some(local_defid) = func_defid.as_local() {
-    //         let module_moddefid = tcx.parent_module_from_def_id(local_defid);
-    //         let module_defid = module_moddefid.to_def_id();
-    //         if !tcx.visibility(module_defid).is_public() {
-    //             // println!("module def id {:?}",UigUnit::get_cleaned_def_path_name(tcx, module_defid));
-    //             return Self::is_re_exported(tcx, func_defid, module_moddefid.to_local_def_id());
-    //         }
-    //     }
-    // }
     true
 }
 
@@ -712,7 +702,7 @@ pub fn generate_contract_from_std_annotation_json(
 
         let arg_index_str = &raw_args[0];
         let local_id = if let Ok(arg_idx) = arg_index_str.parse::<usize>() {
-            arg_idx + 1
+            arg_idx
         } else {
             rap_error!(
                 "JSON Contract Error: First argument must be an arg index number, got {}",
@@ -748,6 +738,7 @@ pub fn generate_contract_from_std_annotation_json(
         results.push((local_id, fields, contract));
     }
 
+    // rap_warn!("Get contract {:?}.", results);
     results
 }
 
@@ -1160,18 +1151,25 @@ fn find_generic_in_ty<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>, type_ident: &str) -
 
 pub fn reflect_generic<'tcx>(
     generic_mapping: &FxHashMap<String, Ty<'tcx>>,
+    func_name: &str,
     ty: Ty<'tcx>,
 ) -> Ty<'tcx> {
+    let mut actual_ty = ty;
     match ty.kind() {
         TyKind::Param(param_ty) => {
             let generic_name = param_ty.name.to_string();
-            if let Some(actual_ty) = generic_mapping.get(&generic_name) {
-                return *actual_ty;
+            if let Some(actual_ty_from_map) = generic_mapping.get(&generic_name) {
+                actual_ty = *actual_ty_from_map;
             }
         }
         _ => {}
     }
-    ty
+    rap_debug!(
+        "peel generic ty for {:?}, actual_ty is {:?}",
+        func_name,
+        actual_ty
+    );
+    actual_ty
 }
 
 // src_var = 0: for constructor

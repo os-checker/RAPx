@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use z3::ast::{Ast, BV, Bool};
 use z3::{Config, Context, SatResult, Solver};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SymbolicDef {
     Param(usize),
     Constant(u128),
@@ -12,11 +12,11 @@ pub enum SymbolicDef {
     Cast(usize, String),
     Binary(BinOp, usize, AnaOperand),
     UnOp(UnOp),
-    Call(String, Vec<usize>),
+    Call(String, Vec<AnaOperand>),
     Ref(usize),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AnaOperand {
     Local(usize),
     Const(u128),
@@ -26,7 +26,16 @@ pub enum AnaOperand {
 pub struct ValueDomain {
     pub def: Option<SymbolicDef>,
     pub value_constraint: Option<u128>,
-    pub align: Option<(u64, u64)>,
+}
+
+impl ValueDomain {
+    pub fn get_constant(&self) -> Option<u128> {
+        if let Some(SymbolicDef::Constant(c)) = self.def {
+            Some(c)
+        } else {
+            self.value_constraint
+        }
+    }
 }
 
 fn get_operand_bv<'a>(
@@ -40,6 +49,8 @@ fn get_operand_bv<'a>(
     }
 }
 
+/// Verifies a target property using Z3 SMT solver given variable domains and path constraints.
+/// Returns true if the property holds (UNSAT for negation), false otherwise.
 pub fn verify_with_z3<F>(
     values: HashMap<usize, ValueDomain>,
     path_constraints: Vec<SymbolicDef>,
@@ -54,11 +65,13 @@ where
 
     let mut z3_vars: HashMap<usize, BV> = HashMap::new();
 
+    // Create symbolic bitvector variables for all locals
     for local_index in values.keys() {
         let name = format!("loc_{}", local_index);
         z3_vars.insert(*local_index, BV::new_const(&ctx, name, 64));
     }
 
+    // Encode variable definitions (assignments, operations) as solver constraints
     for (local_idx, domain) in &values {
         let current_var = match z3_vars.get(local_idx) {
             Some(v) => v,
@@ -67,11 +80,11 @@ where
 
         if let Some(ref def) = domain.def {
             match def {
-                SymbolicDef::Call(name, args) if name.contains("byte_add") && args.len() == 2 => {
-                    if let (Some(lhs), Some(rhs)) = (z3_vars.get(&args[0]), z3_vars.get(&args[1])) {
-                        solver.assert(&current_var._eq(&lhs.bvadd(rhs)));
-                    }
-                }
+                // SymbolicDef::Call(name, args) if name.contains("byte_add") && args.len() == 2 => {
+                //     if let (Some(lhs), Some(rhs)) = (z3_vars.get(&args[0]), z3_vars.get(&args[1])) {
+                //         solver.assert(&current_var._eq(&lhs.bvadd(rhs)));
+                //     }
+                // }
                 SymbolicDef::Cast(src_idx, _) => {
                     if let Some(src_var) = z3_vars.get(src_idx) {
                         solver.assert(&current_var._eq(src_var));
@@ -106,6 +119,7 @@ where
         }
     }
 
+    // Apply path constraints (e.g., branch conditions)
     for constraint in path_constraints {
         match constraint {
             SymbolicDef::Binary(op, lhs_idx, rhs_op) => {
@@ -126,32 +140,13 @@ where
         }
     }
 
+    // Assert negation of the target property
     let target_prop = target_verifier(&ctx, &z3_vars);
     solver.assert(&target_prop.not());
 
+    // UNSAT means no counter-example exists -> property holds
     match solver.check() {
         SatResult::Unsat => true,
         _ => false,
     }
-}
-
-pub fn verify_alignment(
-    values: HashMap<usize, ValueDomain>,
-    path_constraints: Vec<SymbolicDef>,
-    local_idx: usize,
-    required_align: u64,
-) -> bool {
-    verify_with_z3(
-        values,
-        path_constraints,
-        |ctx, vars: &HashMap<usize, BV>| {
-            if let Some(var) = vars.get(&local_idx) {
-                let z3_align = BV::from_u64(ctx, required_align, 64);
-                let zero = BV::from_u64(ctx, 0, 64);
-                var.bvurem(&z3_align)._eq(&zero)
-            } else {
-                Bool::from_bool(ctx, false)
-            }
-        },
-    )
 }

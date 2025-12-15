@@ -1,6 +1,12 @@
 use crate::{
     analysis::{
-        senryx::contracts::property::{CisRangeItem, ContractualInvariantState, PropertyContract},
+        senryx::{
+            contracts::{
+                abstract_state::AlignState,
+                property::{CisRangeItem, ContractualInvariantState, PropertyContract},
+            },
+            symbolic_analysis::{AnaOperand, SymbolicDef},
+        },
         utils::fn_info::{display_hashmap, get_pointee, is_ptr, is_ref, is_slice, reverse_op},
     },
     rap_debug, rap_warn,
@@ -14,22 +20,22 @@ use serde::de;
 use std::collections::{HashMap, HashSet, VecDeque};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct States {
+pub struct States<'tcx> {
     pub nonnull: bool,
     pub allocator_consistency: bool,
     pub init: bool,
-    pub align: bool,
+    pub align: AlignState<'tcx>,
     pub valid_string: bool,
     pub valid_cstr: bool,
 }
 
-impl States {
-    pub fn new() -> Self {
+impl<'tcx> States<'tcx> {
+    pub fn new(ty: Ty<'tcx>) -> Self {
         Self {
             nonnull: true,
             allocator_consistency: true,
             init: true,
-            align: true,
+            align: AlignState::Aligned(ty, 0),
             valid_string: true,
             valid_cstr: true,
         }
@@ -40,17 +46,17 @@ impl States {
             nonnull: false,
             allocator_consistency: false,
             init: false,
-            align: false,
+            align: AlignState::Unknown,
             valid_string: false,
             valid_cstr: false,
         }
     }
 
-    pub fn merge_states(&mut self, other: &States) {
+    pub fn merge_states(&mut self, other: &States<'tcx>) {
         self.nonnull &= other.nonnull;
         self.allocator_consistency &= other.allocator_consistency;
         self.init &= other.init;
-        self.align &= other.align;
+        self.align.merge(&other.align);
         self.valid_string &= other.valid_string;
         self.valid_cstr &= other.valid_cstr;
     }
@@ -61,7 +67,7 @@ pub struct InterResultNode<'tcx> {
     pub point_to: Option<Box<InterResultNode<'tcx>>>,
     pub fields: HashMap<usize, InterResultNode<'tcx>>,
     pub ty: Option<Ty<'tcx>>,
-    pub states: States,
+    pub states: States<'tcx>,
     pub const_value: usize,
 }
 
@@ -71,7 +77,7 @@ impl<'tcx> InterResultNode<'tcx> {
             point_to: None,
             fields: HashMap::new(),
             ty,
-            states: States::new(),
+            states: States::new(ty.unwrap()),
             const_value: 0, // To be modified
         }
     }
@@ -129,6 +135,17 @@ impl<'tcx> InterResultNode<'tcx> {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct FunctionSummary {
+    pub return_def: Option<SymbolicDef>,
+}
+
+impl FunctionSummary {
+    pub fn new(def: Option<SymbolicDef>) -> Self {
+        Self { return_def: def }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct VariableNode<'tcx> {
     pub id: usize,
@@ -138,9 +155,10 @@ pub struct VariableNode<'tcx> {
     pub field: HashMap<usize, usize>,
     pub ty: Option<Ty<'tcx>>,
     pub is_dropped: bool,
-    pub ots: States,
+    pub ots: States<'tcx>,
     pub const_value: usize,
     pub cis: ContractualInvariantState<'tcx>,
+    pub offset_from: Option<SymbolicDef>,
 }
 
 impl<'tcx> VariableNode<'tcx> {
@@ -149,7 +167,7 @@ impl<'tcx> VariableNode<'tcx> {
         points_to: Option<usize>,
         pointed_by: HashSet<usize>,
         ty: Option<Ty<'tcx>>,
-        ots: States,
+        ots: States<'tcx>,
     ) -> Self {
         VariableNode {
             id,
@@ -162,6 +180,7 @@ impl<'tcx> VariableNode<'tcx> {
             ots,
             const_value: 0,
             cis: ContractualInvariantState::new_default(),
+            offset_from: None,
         }
     }
 
@@ -174,13 +193,14 @@ impl<'tcx> VariableNode<'tcx> {
             field: HashMap::new(),
             ty,
             is_dropped: false,
-            ots: States::new(),
+            ots: States::new(ty.unwrap()),
             const_value: 0,
             cis: ContractualInvariantState::new_default(),
+            offset_from: None,
         }
     }
 
-    pub fn new_with_states(id: usize, ty: Option<Ty<'tcx>>, ots: States) -> Self {
+    pub fn new_with_states(id: usize, ty: Option<Ty<'tcx>>, ots: States<'tcx>) -> Self {
         VariableNode {
             id,
             alias_set: HashSet::from([id]),
@@ -192,6 +212,7 @@ impl<'tcx> VariableNode<'tcx> {
             ots,
             const_value: 0,
             cis: ContractualInvariantState::new_default(),
+            offset_from: None,
         }
     }
 }
@@ -325,7 +346,7 @@ impl<'tcx> DominatedGraph<'tcx> {
                 Some(get_pointee(local_ty)),
                 idx,
                 None,
-                States::new(),
+                States::new(local_ty),
             );
             self.add_bound_for_obj(new_id, local_ty);
         }
@@ -371,8 +392,6 @@ impl<'tcx> DominatedGraph<'tcx> {
         let var = self.get_var_node(arg).unwrap();
         // If the var is ptr or ref, then find its pointed obj.
         if let Some(pointed_idx) = var.points_to {
-            // let pointed_var = self.get_var_node(pointed_idx).unwrap();
-            // pointed_var.ty
             self.get_obj_ty_through_chain(pointed_idx)
         } else {
             var.ty
@@ -380,8 +399,6 @@ impl<'tcx> DominatedGraph<'tcx> {
     }
 
     pub fn get_point_to_id(&self, arg: usize) -> usize {
-        // display_hashmap(&self.variables,1);
-        // println!("{:?}",self.def_id);
         let var = self.get_var_node(arg).unwrap();
         if let Some(pointed_idx) = var.points_to {
             pointed_idx
@@ -435,7 +452,7 @@ impl<'tcx> DominatedGraph<'tcx> {
         return new_id;
     }
 
-    pub fn find_var_id_with_fields_seq(&mut self, local: usize, fields: Vec<usize>) -> usize {
+    pub fn find_var_id_with_fields_seq(&mut self, local: usize, fields: &Vec<usize>) -> usize {
         let mut cur = local;
         for field in fields.clone() {
             let mut cur_node = self.get_var_node(cur).unwrap();
@@ -476,17 +493,53 @@ impl<'tcx> DominatedGraph<'tcx> {
         return cur;
     }
 
+    /// Establishes a points-to relationship: lv -> rv.
+    /// - Updates graph topology.
+    /// - If `lv` is a Reference type, marks it as Aligned (Trusted Source).
     pub fn point(&mut self, lv: usize, rv: usize) {
-        // rap_warn!("{lv} = & or * {rv}");
-        let rv_node = self.get_var_node_mut(rv).unwrap();
-        rv_node.pointed_by.insert(lv);
-        let lv_node = self.get_var_node_mut(lv).unwrap();
-        let ori_to = lv_node.points_to.clone();
-        lv_node.points_to = Some(rv);
-        // Delete lv from the origin pointed node's pointed_by.
-        if let Some(to) = ori_to {
-            let ori_to_node = self.get_var_node_mut(to).unwrap();
-            ori_to_node.pointed_by.remove(&lv);
+        // rap_debug!("Graph Point: _{} -> _{}", lv, rv);
+
+        // 1. Update Topology: rv.pointed_by.insert(lv)
+        if let Some(rv_node) = self.get_var_node_mut(rv) {
+            rv_node.pointed_by.insert(lv);
+        } else {
+            rap_debug!("Graph Point Error: Target node _{} not found", rv);
+            return;
+        }
+
+        // 2. Update Topology & State: lv.points_to = rv
+        // We need to retrieve 'old_points_to' to clean up later
+        let old_points_to = if let Some(lv_node) = self.get_var_node_mut(lv) {
+            let old = lv_node.points_to;
+            lv_node.points_to = Some(rv);
+
+            // --- Update AlignState based on Type ---
+            // Logic: If lv is a Reference (&T), it implies the pointer is constructed
+            // from a valid, aligned Rust reference. We mark it as Aligned(T, abi_align).
+            if let Some(lv_ty) = lv_node.ty {
+                let pointee_ty = get_pointee(lv_ty);
+                lv_node.ots.align = AlignState::Aligned(pointee_ty, 1);
+
+                rap_debug!(
+                    "Graph Point: Refined Ref _{} ({:?}) to Aligned via point()",
+                    lv,
+                    pointee_ty
+                );
+            }
+
+            old
+        } else {
+            None
+        };
+
+        // 3. Clean up: Remove lv from old_points_to's pointed_by set
+        if let Some(to) = old_points_to {
+            // Only remove if we are changing pointing target (and not pointing to the same thing)
+            if to != rv {
+                if let Some(ori_to_node) = self.get_var_node_mut(to) {
+                    ori_to_node.pointed_by.remove(&lv);
+                }
+            }
         }
     }
 
@@ -575,7 +628,7 @@ impl<'tcx> DominatedGraph<'tcx> {
         ty: Option<Ty<'tcx>>,
         parent_id: usize,
         child_id: Option<usize>,
-        state: States,
+        state: States<'tcx>,
     ) {
         self.variables.insert(
             dv,
@@ -819,4 +872,66 @@ fn html_escape(input: &str) -> String {
         .replace("<", "&lt;")
         .replace(">", "&gt;")
         .replace("\"", "&quot;")
+}
+
+impl<'tcx> DominatedGraph<'tcx> {
+    /// Apply function summary to current DG
+    /// dest_local: ret_val of the function call
+    /// summary: summary of callee
+    /// args: args of ftunction call
+    pub fn apply_function_summary(
+        &mut self,
+        dest_local: usize,
+        summary: &FunctionSummary,
+        args: &Vec<usize>,
+    ) {
+        if let Some(def) = &summary.return_def {
+            self.apply_summary_def(dest_local, def, args);
+        }
+    }
+
+    // Dispatcher of function summary,
+    // 'SymbolicDef' will record the relationship between params and ret_val.
+    fn apply_summary_def(&mut self, target_local: usize, def: &SymbolicDef, args: &Vec<usize>) {
+        match def {
+            SymbolicDef::Param(param_idx) => {
+                if *param_idx > 0 && param_idx - 1 < args.len() {
+                    let arg_local = args[param_idx - 1];
+                    self.merge(target_local, arg_local);
+                }
+            }
+            SymbolicDef::Binary(BinOp::Offset, param_base_idx, rhs_op) => {
+                if *param_base_idx > 0 && param_base_idx - 1 < args.len() {
+                    let base_local = args[param_base_idx - 1];
+                    let base_point_to = self.get_point_to_id(base_local);
+
+                    self.point(target_local, base_point_to);
+
+                    let node = self.get_var_node_mut(target_local).unwrap();
+                    let real_rhs_op = match rhs_op {
+                        AnaOperand::Const(c) => AnaOperand::Const(*c),
+                        AnaOperand::Local(param_idx) => {
+                            if *param_idx > 0 && param_idx - 1 < args.len() {
+                                AnaOperand::Local(args[param_idx - 1])
+                            } else {
+                                AnaOperand::Const(0)
+                            }
+                        }
+                    };
+
+                    node.offset_from =
+                        Some(SymbolicDef::Binary(BinOp::Offset, base_local, real_rhs_op));
+
+                    rap_warn!(
+                        "Applied Offset summary: _{} is offset of _{} (arg {})",
+                        target_local,
+                        base_local,
+                        param_base_idx
+                    );
+                }
+            }
+            // todo: support others.
+            _ => {}
+        }
+    }
 }
