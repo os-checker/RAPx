@@ -173,142 +173,130 @@ impl<'tcx> SafeDropGraph<'tcx> {
                     }
                 }
             }
-        /* Reach a leaf node, check bugs */
-        rap_info!("cur_block.next: {:?}", cur_block.next);
-        match cur_block.next.len() {
-            0 => {
-                if Self::should_check(self.mop_graph.def_id) {
-                    self.dp_check(cur_block.is_cleanup);
+            /* Reach a leaf node, check bugs */
+            rap_info!("cur_block.next: {:?}", cur_block.next);
+            match cur_block.next.len() {
+                0 => {
+                    if Self::should_check(self.mop_graph.def_id) {
+                        self.dp_check(cur_block.is_cleanup);
+                    }
+                    return;
                 }
-                return;
-            }
-            1 => {
-                /*
-                 * Equivalent to self.check(cur_block.next[0]..);
-                 * We cannot use [0] for FxHashSet.
-                 */
-                for next in cur_block.next {
-                    self.check(next, tcx, fn_map);
+                1 => {
+                    /*
+                     * Equivalent to self.check(cur_block.next[0]..);
+                     * We cannot use [0] for FxHashSet.
+                     */
+                    for next in cur_block.next {
+                        self.check(next, tcx, fn_map);
+                    }
+                    return;
                 }
-                return;
+                _ => {}
             }
-            _ => { // multiple blocks
-            }
-        }
         } //else {
-            /* Begin: handle the SwitchInt statement. */
-            let mut single_target = false;
-            let mut sw_val = 0;
-            let mut sw_target = 0; // Single target
-            let mut path_discr_id = 0; // To avoid analyzing paths that cannot be reached with one enum type.
-            let mut sw_targets = None; // Multiple targets of SwitchInt
-            if let Some(ref switch_stmt) = cur_block.switch_stmt
-                && cur_block.dominated_scc_bbs.is_empty()
+
+        /* Begin: handle the SwitchInt statement. */
+        let mut single_target = false;
+        let mut sw_val = 0;
+        let mut sw_target = 0; // Single target
+        let mut path_discr_id = 0; // To avoid analyzing paths that cannot be reached with one enum type.
+        let mut sw_targets = None; // Multiple targets of SwitchInt
+        if let Some(ref switch_stmt) = cur_block.switch_stmt
+            && cur_block.dominated_scc_bbs.is_empty()
+        {
+            rap_info!("Handle switchInt in bb {:?}", cur_block);
+            if let TerminatorKind::SwitchInt {
+                ref discr,
+                ref targets,
+            } = switch_stmt.kind
             {
-                rap_info!("Handle switchInt in bb {:?}", cur_block);
-                if let TerminatorKind::SwitchInt {
-                    ref discr,
-                    ref targets,
-                } = switch_stmt.kind
-                {
-                    rap_debug!("{:?}", switch_stmt);
-                    rap_debug!("{:?}", self.mop_graph.constants);
-                    match discr {
-                        Copy(p) | Move(p) => {
-                            let place = self.projection(false, *p);
-                            let local_decls = &tcx.optimized_mir(self.mop_graph.def_id).local_decls;
-                            let place_ty = (*p).ty(local_decls, tcx);
-                            rap_debug!("place {:?}", place);
-                            match place_ty.ty.kind() {
-                                TyKind::Bool => {
-                                    rap_debug!("SwitchInt via Bool");
-                                    if let Some(constant) = self.mop_graph.constants.get(&place) {
+                rap_debug!("{:?}", switch_stmt);
+                rap_debug!("{:?}", self.mop_graph.constants);
+                match discr {
+                    Copy(p) | Move(p) => {
+                        let place = self.projection(false, *p);
+                        let local_decls = &tcx.optimized_mir(self.mop_graph.def_id).local_decls;
+                        let place_ty = (*p).ty(local_decls, tcx);
+                        rap_debug!("place {:?}", place);
+                        match place_ty.ty.kind() {
+                            TyKind::Bool => {
+                                rap_debug!("SwitchInt via Bool");
+                                if let Some(constant) = self.mop_graph.constants.get(&place) {
+                                    if *constant != usize::MAX {
+                                        single_target = true;
+                                        sw_val = *constant;
+                                    }
+                                }
+                                path_discr_id = place;
+                                sw_targets = Some(targets.clone());
+                            }
+                            _ => {
+                                if let Some(father) = self
+                                    .mop_graph
+                                    .discriminants
+                                    .get(&self.mop_graph.values[place].local)
+                                {
+                                    if let Some(constant) = self.mop_graph.constants.get(father) {
                                         if *constant != usize::MAX {
                                             single_target = true;
                                             sw_val = *constant;
                                         }
                                     }
-                                    path_discr_id = place;
-                                    sw_targets = Some(targets.clone());
-                                }
-                                _ => {
-                                    if let Some(father) = self
-                                        .mop_graph
-                                        .discriminants
-                                        .get(&self.mop_graph.values[place].local)
-                                    {
-                                        if let Some(constant) = self.mop_graph.constants.get(father)
-                                        {
-                                            if *constant != usize::MAX {
-                                                single_target = true;
-                                                sw_val = *constant;
-                                            }
-                                        }
-                                        if self.mop_graph.values[place].local == place {
-                                            path_discr_id = *father;
-                                            sw_targets = Some(targets.clone());
-                                        }
+                                    if self.mop_graph.values[place].local == place {
+                                        path_discr_id = *father;
+                                        sw_targets = Some(targets.clone());
                                     }
                                 }
                             }
                         }
-                        Constant(c) => {
-                            single_target = true;
-                            let ty_env =
-                                TypingEnv::post_analysis(self.mop_graph.tcx, self.mop_graph.def_id);
-                            if let Some(val) =
-                                c.const_.try_eval_target_usize(self.mop_graph.tcx, ty_env)
-                            {
-                                sw_val = val as usize;
-                            }
-                        }
                     }
-                    if single_target {
-                        /* Find the target based on the value;
-                         * Since sw_val is a const, only one target is reachable.
-                         * Filed 0 is the value; field 1 is the real target.
-                         */
-                        for iter in targets.iter() {
-                            if iter.0 as usize == sw_val {
-                                sw_target = iter.1.as_usize();
-                                break;
-                            }
-                        }
-                        /* No target found, choose the default target.
-                         * The default targets is not included within the iterator.
-                         * We can only obtain the default target based on the last item of all_targets().
-                         */
-                        if sw_target == 0 {
-                            let all_target = targets.all_targets();
-                            sw_target = all_target[all_target.len() - 1].as_usize();
+                    Constant(c) => {
+                        single_target = true;
+                        let ty_env =
+                            TypingEnv::post_analysis(self.mop_graph.tcx, self.mop_graph.def_id);
+                        if let Some(val) =
+                            c.const_.try_eval_target_usize(self.mop_graph.tcx, ty_env)
+                        {
+                            sw_val = val as usize;
                         }
                     }
                 }
-            }
-            /* End: finish handling SwitchInt */
-            // fixed path since a constant switchInt value
-            if single_target {
-                self.check(sw_target, tcx, fn_map);
-            } else {
-                // Other cases in switchInt terminators
-                if let Some(targets) = sw_targets {
+                if single_target {
+                    /* Find the target based on the value;
+                     * Since sw_val is a const, only one target is reachable.
+                     * Filed 0 is the value; field 1 is the real target.
+                     */
                     for iter in targets.iter() {
-                        if self.mop_graph.visit_times > VISIT_LIMIT {
-                            continue;
+                        if iter.0 as usize == sw_val {
+                            sw_target = iter.1.as_usize();
+                            break;
                         }
-                        let next_idx = iter.1.as_usize();
-                        let path_discr_val = iter.0 as usize;
-                        self.split_check_with_cond(
-                            next_idx,
-                            path_discr_id,
-                            path_discr_val,
-                            tcx,
-                            fn_map,
-                        );
                     }
-                    let all_targets = targets.all_targets();
-                    let next_idx = all_targets[all_targets.len() - 1].as_usize();
-                    let path_discr_val = usize::MAX; // to indicate the default path;
+                    /* No target found, choose the default target.
+                     * The default targets is not included within the iterator.
+                     * We can only obtain the default target based on the last item of all_targets().
+                     */
+                    if sw_target == 0 {
+                        let all_target = targets.all_targets();
+                        sw_target = all_target[all_target.len() - 1].as_usize();
+                    }
+                }
+            }
+        }
+        /* End: finish handling SwitchInt */
+        // fixed path since a constant switchInt value
+        if single_target {
+            self.check(sw_target, tcx, fn_map);
+        } else {
+            // Other cases in switchInt terminators
+            if let Some(targets) = sw_targets {
+                for iter in targets.iter() {
+                    if self.mop_graph.visit_times > VISIT_LIMIT {
+                        continue;
+                    }
+                    let next_idx = iter.1.as_usize();
+                    let path_discr_val = iter.0 as usize;
                     self.split_check_with_cond(
                         next_idx,
                         path_discr_id,
@@ -316,16 +304,21 @@ impl<'tcx> SafeDropGraph<'tcx> {
                         tcx,
                         fn_map,
                     );
-                } else {
-                    for i in &cur_block.next {
-                        if self.mop_graph.visit_times > VISIT_LIMIT {
-                            continue;
-                        }
-                        let next_idx = i;
-                        self.split_check(*next_idx, tcx, fn_map);
+                }
+                let all_targets = targets.all_targets();
+                let next_idx = all_targets[all_targets.len() - 1].as_usize();
+                let path_discr_val = usize::MAX; // to indicate the default path;
+                self.split_check_with_cond(next_idx, path_discr_id, path_discr_val, tcx, fn_map);
+            } else {
+                for i in &cur_block.next {
+                    if self.mop_graph.visit_times > VISIT_LIMIT {
+                        continue;
                     }
+                    let next_idx = i;
+                    self.split_check(*next_idx, tcx, fn_map);
                 }
             }
+        }
         //}
 
         rap_debug!("Values: {:?}", self.mop_graph.values);
