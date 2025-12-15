@@ -1,6 +1,5 @@
 use super::graph::*;
-use crate::analysis::core::alias_analysis::default::{MopAAResultMap, graph::SccHelper};
-use rustc_data_structures::fx::FxHashSet;
+use crate::analysis::core::alias_analysis::default::MopAAResultMap;
 use rustc_middle::{
     mir::{
         Operand::{self, Constant, Copy, Move},
@@ -8,7 +7,10 @@ use rustc_middle::{
     },
     ty::{TyCtxt, TyKind, TypingEnv},
 };
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    vec,
+};
 
 pub const VISIT_LIMIT: usize = 1000;
 
@@ -127,216 +129,83 @@ impl<'tcx> SafeDropGraph<'tcx> {
             return;
         }
         let scc_idx = self.mop_graph.scc_indices[bb_idx];
-        let cur_block = self.mop_graph.blocks[scc_idx].clone();
-        rap_debug!("Checking bb: {}, scc_idx: {}, scc: {:?}, child_scc: {:?}", bb_idx, scc_idx, cur_block.dominated_scc_bbs.clone(), self.mop_graph.child_scc.get(&scc_idx));
+        let cur_block = self.mop_graph.blocks[bb_idx].clone();
+        rap_info!(
+            "Checking bb: {}, scc_idx: {}, scc: {:?}, child_scc: {:?}",
+            bb_idx,
+            scc_idx,
+            cur_block.dominated_scc_bbs.clone(),
+            self.mop_graph.child_scc.get(&scc_idx)
+        );
         self.alias_bb(self.mop_graph.scc_indices[bb_idx]);
         self.alias_bbcall(self.mop_graph.scc_indices[bb_idx], tcx, fn_map);
         self.drop_check(self.mop_graph.scc_indices[bb_idx], tcx);
 
-        if self
-            .mop_graph
-            .child_scc
-            .get(&scc_idx)
-            .is_some()
-        {
-            rap_debug!("handle child scc for bb {}", bb_idx);
-            let (init_block, cur_targets, scc_block_set) =
-                self.mop_graph.child_scc.get(&scc_idx).unwrap().clone();
+        if bb_idx == scc_idx {
+            //if self.mop_graph.child_scc.get(&bb_idx).is_some() {
+            let mut paths_in_scc = vec![];
 
-            for enum_idx in cur_targets.all_targets() {
-                let backup_values = self.mop_graph.values.clone();
-                let backup_constant = self.mop_graph.constants.clone();
+            /* Handle cases if the current block is a merged scc block with sub block */
+            self.calculate_scc_order(
+                scc_idx,
+                bb_idx,
+                &mut cur_block.dominated_scc_bbs.clone(),
+                &mut vec![],
+                &mut HashMap::new(),
+                &mut HashSet::new(),
+                &mut paths_in_scc,
+            );
+            rap_info!("Paths in scc: {:?}", paths_in_scc);
 
-                let mut block_node = if bb_idx == scc_idx {
-                    init_block.clone()
-                } else {
-                    self.mop_graph.blocks[bb_idx].clone()
-                };
+            let backup_values = self.mop_graph.values.clone(); // duplicate the status when visiteding different paths;
+            let backup_constant = self.mop_graph.constants.clone();
+            let backup_alias_set = self.mop_graph.alias_set.clone();
+            for each_path in paths_in_scc {
+                self.mop_graph.alias_set = backup_alias_set.clone();
+                self.mop_graph.values = backup_values.clone();
+                self.mop_graph.constants = backup_constant.clone();
 
-                if let Some(switch_stmt) = block_node.switch_stmt {
-                    match &switch_stmt.kind {
-                        TerminatorKind::SwitchInt { targets, .. } => {
-                            if cur_targets == *targets {
-                                block_node.next = FxHashSet::default();
-                                block_node.next.insert(enum_idx.index());
-                            }
-                        }
-                        _ => {
-                            unreachable!();
-                        }
+                if !each_path.is_empty() {
+                    for idx in each_path {
+                        self.alias_bb(idx);
+                        self.alias_bbcall(idx, tcx, fn_map);
+                        self.drop_check(idx, tcx);
                     }
                 }
-
-                let mut work_list = Vec::new();
-                let mut work_set = FxHashSet::<usize>::default();
-                work_list.push(bb_idx);
-                work_set.insert(bb_idx);
-                while !work_list.is_empty() {
-                    let current_node = work_list.pop().unwrap();
-                    block_node.dominated_scc_bbs.push(current_node);
-                    let real_node = if current_node != scc_idx {
-                        self.mop_graph.blocks[current_node].clone()
-                    } else {
-                        init_block.clone()
-                    };
-
-                    match real_node.switch_stmt {
-                        Some(ref switch_stmt) => {
-                            let TerminatorKind::SwitchInt { ref targets, .. } = switch_stmt.kind
-                            else {
-                                unreachable!();
-                            };
-
-                            if cur_targets == *targets {
-                                block_node.next.insert(enum_idx.index());
-                            } else {
-                                for next in &real_node.next {
-                                    block_node.next.insert(*next);
-                                }
-                            }
-                        }
-                        None => {
-                            for next in &real_node.next {
-                                block_node.next.insert(*next);
-                            }
-                        }
-                    }
-
-                    match real_node.switch_stmt {
-                        Some(ref switch_stmt) => {
-                            let TerminatorKind::SwitchInt { ref targets, .. } = switch_stmt.kind
-                            else {
-                                unreachable!();
-                            };
-
-                            if cur_targets == *targets {
-                                let next_idx = enum_idx.index();
-                                if scc_block_set.contains(&next_idx)
-                                    && !work_set.contains(&next_idx)
-                                {
-                                    work_set.insert(next_idx);
-                                    work_list.push(next_idx);
-                                }
-                            } else {
-                                for next in &real_node.next {
-                                    if scc_block_set.contains(next) && !work_set.contains(next) {
-                                        work_set.insert(*next);
-                                        work_list.push(*next);
-                                    }
-                                }
-                            }
-                        }
-                        None => {
-                            for next in &real_node.next {
-                                if scc_block_set.contains(next) && !work_set.contains(next) {
-                                    work_set.insert(*next);
-                                    work_list.push(*next);
-                                }
-                            }
-                        }
-                    }
-                }
-
-                /* remove next nodes which are already in the current SCC */
-                let scc_indices = self.mop_graph.scc_indices().to_vec();
-                block_node.next.retain(|i| scc_indices[*i] != scc_idx);
-
-                for i in block_node.dominated_scc_bbs.clone() {
-                    self.alias_bb(i);
-                    self.alias_bbcall(i, tcx, fn_map);
-                    self.drop_check(i, tcx);
-                }
-                /* Reach a leaf node, check bugs */
-                match block_node.next.len() {
-                    0 => {
-                        // check the bugs.
-                        if Self::should_check(self.mop_graph.def_id) {
-                            self.dp_check(cur_block.is_cleanup);
-                        }
-                        return;
-                    }
-                    _ => {
-                        /*
-                         * Equivalent to self.check(cur_block.next[0]..);
-                         * We cannot use [0] for FxHashSet.
-                         */
-                        for next in block_node.next {
-                            self.check(next, tcx, fn_map);
-                        }
-                    }
-                }
-
-                self.mop_graph.values = backup_values;
-                self.mop_graph.constants = backup_constant;
             }
-
-            return;
+        /* Reach a leaf node, check bugs */
+        rap_info!("cur_block.next: {:?}", cur_block.next);
+        match cur_block.next.len() {
+            0 => {
+                if Self::should_check(self.mop_graph.def_id) {
+                    self.dp_check(cur_block.is_cleanup);
+                }
+                return;
+            }
+            1 => {
+                /*
+                 * Equivalent to self.check(cur_block.next[0]..);
+                 * We cannot use [0] for FxHashSet.
+                 */
+                for next in cur_block.next {
+                    self.check(next, tcx, fn_map);
+                }
+                return;
+            }
+            _ => { // multiple blocks
+            }
         }
-
-        let mut paths_in_scc = vec![];
-        paths_in_scc.push(vec![]);
-        let start_bb = bb_idx;
-        let cur_bb = bb_idx;
-
-        /* Handle cases if the current block is a merged scc block with sub block */
-        self.calculate_scc_order(
-            start_bb,
-            cur_bb,
-            &mut cur_block.dominated_scc_bbs.clone(),
-            &mut vec![],
-            &mut HashMap::new(),
-            &mut HashSet::new(),
-            &mut paths_in_scc,
-        );
-        rap_debug!("Paths in scc {:?}: {:?}", cur_block.dominated_scc_bbs.clone(), paths_in_scc);
-
-        let backup_values = self.mop_graph.values.clone(); // duplicate the status when visiteding different paths;
-        let backup_constant = self.mop_graph.constants.clone();
-        let backup_alias_set = self.mop_graph.alias_set.clone();
-        for each_path in paths_in_scc {
-            self.mop_graph.alias_set = backup_alias_set.clone();
-            self.mop_graph.values = backup_values.clone();
-            self.mop_graph.constants = backup_constant.clone();
-
-            if !each_path.is_empty() {
-                for idx in each_path {
-                    self.alias_bb(idx);
-                    self.alias_bbcall(idx, tcx, fn_map);
-                }
-            }
-
-            let cur_block = cur_block.clone();
-            /* Reach a leaf node, check bugs */
-            match cur_block.next.len() {
-                0 => {
-                    if Self::should_check(self.mop_graph.def_id) {
-                        self.dp_check(cur_block.is_cleanup);
-                    }
-                    return;
-                }
-                1 => {
-                    /*
-                     * Equivalent to self.check(cur_block.next[0]..);
-                     * We cannot use [0] for FxHashSet.
-                     */
-                    for next in cur_block.next {
-                        self.check(next, tcx, fn_map);
-                    }
-                    return;
-                }
-                _ => { // multiple blocks
-                }
-            }
-
+        } //else {
             /* Begin: handle the SwitchInt statement. */
             let mut single_target = false;
             let mut sw_val = 0;
             let mut sw_target = 0; // Single target
             let mut path_discr_id = 0; // To avoid analyzing paths that cannot be reached with one enum type.
             let mut sw_targets = None; // Multiple targets of SwitchInt
-            if let Some(switch_stmt) = cur_block.switch_stmt
+            if let Some(ref switch_stmt) = cur_block.switch_stmt
                 && cur_block.dominated_scc_bbs.is_empty()
             {
+                rap_info!("Handle switchInt in bb {:?}", cur_block);
                 if let TerminatorKind::SwitchInt {
                     ref discr,
                     ref targets,
@@ -448,16 +317,17 @@ impl<'tcx> SafeDropGraph<'tcx> {
                         fn_map,
                     );
                 } else {
-                    for i in cur_block.next {
+                    for i in &cur_block.next {
                         if self.mop_graph.visit_times > VISIT_LIMIT {
                             continue;
                         }
                         let next_idx = i;
-                        self.split_check(next_idx, tcx, fn_map);
+                        self.split_check(*next_idx, tcx, fn_map);
                     }
                 }
             }
-        }
+        //}
+
         rap_debug!("Values: {:?}", self.mop_graph.values);
         rap_debug!("Alias: {:?}", self.mop_graph.alias_set);
     }
@@ -497,11 +367,11 @@ impl<'tcx> SafeDropGraph<'tcx> {
                             .get(&self.mop_graph.values[place].local)
                         {
                             let real_discr_local = *real_discr_local;
-                            // There are already restrictions related to the discriminant; 
+                            // There are already restrictions related to the discriminant;
                             // Only the branch that meets the restriction can be taken.
                             if let Some(constant) = stacked_discriminants.get(&real_discr_local) {
                                 let constant = *constant;
-                                for branch in targets.iter() { 
+                                for branch in targets.iter() {
                                     // branch is a tupele (value, target)
                                     if branch.0 as usize == constant {
                                         let target = branch.1.as_usize();
