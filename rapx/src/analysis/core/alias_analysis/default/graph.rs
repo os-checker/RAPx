@@ -553,17 +553,6 @@ pub fn scc_handler<'tcx, T: SccHelper<'tcx>>(graph: &mut T, root: usize, scc_com
         graph.blocks_mut()[root].dominated_scc_bbs.push(node);
         scc_block_set.insert(node);
 
-        // If the node contains a SwitchInt instruction, we should also consider the
-        // condition in the SwitchInt instruction of the SCC diminator.
-        // Example :
-        //  let p = ...
-        //  while x {
-        //      use(p)
-        //      if x {
-        //          drop(p);
-        //      }
-        //      x -= 1;
-        //  }
         if let Some(place) = graph.switch_conds(node) {
             if let Some(switch_stmt) = graph.blocks()[root].switch_stmt.clone() {
                 switch_conds.push((place, switch_stmt));
@@ -578,7 +567,7 @@ pub fn scc_handler<'tcx, T: SccHelper<'tcx>>(graph: &mut T, root: usize, scc_com
 
     switch_conds.retain(|v| !assigned_locals.contains(&(v.0)));
 
-    if !switch_conds.is_empty() && switch_conds.len() == 1 {
+    if !switch_conds.is_empty() {
         let target_terminator = switch_conds[0].1.clone();
 
         let TerminatorKind::SwitchInt { discr: _, targets } = target_terminator.kind else {
