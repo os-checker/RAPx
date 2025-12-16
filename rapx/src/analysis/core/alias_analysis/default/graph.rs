@@ -3,7 +3,7 @@ use crate::{analysis::graphs::scc::Scc, def_id::*, utils::source::*};
 use rustc_data_structures::fx::{FxHashMap, FxHashSet};
 use rustc_middle::{
     mir::{
-        BasicBlock, Const, Operand, Rvalue, StatementKind, SwitchTargets, TerminatorKind,
+        BasicBlock, Const, Operand, Rvalue, StatementKind, TerminatorKind,
         UnwindAction,
     },
     ty::{self, TyCtxt, TypingEnv},
@@ -36,14 +36,6 @@ pub struct MopGraph<'tcx> {
     pub alias_set: Vec<usize>,
     // contains the return results for inter-procedure analysis.
     pub ret_alias: MopAAResult,
-    pub child_scc: FxHashMap<
-        usize,
-        (
-            Block<'tcx>,
-            rustc_middle::mir::SwitchTargets,
-            FxHashSet<usize>,
-        ),
-    >,
     pub terminators: Vec<TerminatorKind<'tcx>>,
 }
 
@@ -394,7 +386,6 @@ impl<'tcx> MopGraph<'tcx> {
             constants: FxHashMap::default(),
             ret_alias: MopAAResult::new(arg_size),
             visit_times: 0,
-            child_scc: FxHashMap::default(),
             discriminants,
             terminators,
         }
@@ -507,10 +498,6 @@ pub trait SccHelper<'tcx> {
     fn blocks_mut(&mut self) -> &mut Vec<Block<'tcx>>;
     fn scc_indices(&self) -> &[usize];
     fn scc_indices_mut(&mut self) -> &mut [usize];
-    fn child_scc(&self) -> &FxHashMap<usize, (Block<'tcx>, SwitchTargets, FxHashSet<usize>)>;
-    fn child_scc_mut(
-        &mut self,
-    ) -> &mut FxHashMap<usize, (Block<'tcx>, SwitchTargets, FxHashSet<usize>)>;
     fn switch_conds(&mut self, node: usize) -> Option<usize>;
 }
 
@@ -527,14 +514,6 @@ impl<'tcx> SccHelper<'tcx> for MopGraph<'tcx> {
     fn scc_indices_mut(&mut self) -> &mut [usize] {
         &mut self.scc_indices
     }
-    fn child_scc(&self) -> &FxHashMap<usize, (Block<'tcx>, SwitchTargets, FxHashSet<usize>)> {
-        &self.child_scc
-    }
-    fn child_scc_mut(
-        &mut self,
-    ) -> &mut FxHashMap<usize, (Block<'tcx>, SwitchTargets, FxHashSet<usize>)> {
-        &mut self.child_scc
-    }
     fn switch_conds(&mut self, node: usize) -> Option<usize> {
         self.get_switch_conds(node)
     }
@@ -545,38 +524,16 @@ pub fn scc_handler<'tcx, T: SccHelper<'tcx>>(graph: &mut T, root: usize, scc_com
     for value in &graph.blocks()[root].assigned_locals {
         assigned_locals.insert(*value);
     }
-    let mut switch_conds = Vec::new();
     let mut scc_block_set = FxHashSet::<usize>::default();
-    let original_root_block = graph.blocks()[root].clone();
     for &node in &scc_components[1..] {
         graph.scc_indices_mut()[node] = root;
         graph.blocks_mut()[root].dominated_scc_bbs.push(node);
         scc_block_set.insert(node);
 
-        if let Some(place) = graph.switch_conds(node) {
-            if let Some(switch_stmt) = graph.blocks()[root].switch_stmt.clone() {
-                switch_conds.push((place, switch_stmt));
-            }
-        }
-
         let nexts = graph.blocks()[node].next.clone();
         for i in nexts {
             graph.blocks_mut()[root].next.insert(i);
         }
-    }
-
-    switch_conds.retain(|v| !assigned_locals.contains(&(v.0)));
-
-    if !switch_conds.is_empty() {
-        let target_terminator = switch_conds[0].1.clone();
-
-        let TerminatorKind::SwitchInt { discr: _, targets } = target_terminator.kind else {
-            unreachable!();
-        };
-
-        graph
-            .child_scc_mut()
-            .insert(root, (original_root_block, targets, scc_block_set));
     }
 
     /* remove next nodes which are already in the current SCC */
@@ -615,7 +572,6 @@ impl<'tcx> std::fmt::Display for MopGraph<'tcx> {
         writeln!(f, "  constants: {:?}", self.constants)?;
         writeln!(f, "  discriminants: {:?}", self.discriminants)?;
         writeln!(f, "  scc_indices: {:?}", self.scc_indices)?;
-        writeln!(f, "  child_scc: {:?}", self.child_scc)?;
         writeln!(f, "  terminators: {:?}", self.terminators)?;
         write!(f, "}}")
     }

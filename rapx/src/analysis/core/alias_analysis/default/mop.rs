@@ -66,7 +66,6 @@ impl<'tcx> MopGraph<'tcx> {
         self.alias_bbcall(self.scc_indices[bb_idx], fn_map, recursion_set);
 
         if bb_idx == scc_idx {
-            //if self.child_scc.get(&bb_idx).is_some() {
             let mut paths_in_scc = vec![];
 
             /* Handle cases if the current block is a merged scc block with sub block */

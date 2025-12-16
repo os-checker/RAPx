@@ -131,18 +131,16 @@ impl<'tcx> SafeDropGraph<'tcx> {
         let scc_idx = self.mop_graph.scc_indices[bb_idx];
         let cur_block = self.mop_graph.blocks[bb_idx].clone();
         rap_info!(
-            "Checking bb: {}, scc_idx: {}, scc: {:?}, child_scc: {:?}",
+            "Checking bb: {}, scc_idx: {}, scc: {:?}",
             bb_idx,
             scc_idx,
             cur_block.dominated_scc_bbs.clone(),
-            self.mop_graph.child_scc.get(&scc_idx)
         );
         self.alias_bb(self.mop_graph.scc_indices[bb_idx]);
         self.alias_bbcall(self.mop_graph.scc_indices[bb_idx], tcx, fn_map);
         self.drop_check(self.mop_graph.scc_indices[bb_idx], tcx);
 
         if bb_idx == scc_idx {
-            //if self.mop_graph.child_scc.get(&bb_idx).is_some() {
             let mut paths_in_scc = vec![];
 
             /* Handle cases if the current block is a merged scc block with sub block */
