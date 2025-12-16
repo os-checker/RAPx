@@ -520,15 +520,9 @@ impl<'tcx> SccHelper<'tcx> for MopGraph<'tcx> {
 }
 
 pub fn scc_handler<'tcx, T: SccHelper<'tcx>>(graph: &mut T, root: usize, scc_components: &[usize]) {
-    let mut assigned_locals = FxHashSet::<usize>::default();
-    for value in &graph.blocks()[root].assigned_locals {
-        assigned_locals.insert(*value);
-    }
-    let mut scc_block_set = FxHashSet::<usize>::default();
     for &node in &scc_components[1..] {
         graph.scc_indices_mut()[node] = root;
         graph.blocks_mut()[root].dominated_scc_bbs.push(node);
-        scc_block_set.insert(node);
 
         let nexts = graph.blocks()[node].next.clone();
         for i in nexts {
