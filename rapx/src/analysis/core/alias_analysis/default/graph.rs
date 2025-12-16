@@ -264,7 +264,8 @@ impl<'tcx> MopGraph<'tcx> {
                     discr: _,
                     ref targets,
                 } => {
-                    cur_bb.terminator = Term::Switch(terminator.clone());
+                    //cur_bb.terminator = Term::Switch(terminator.clone());
+                    cur_bb.switch = Some(terminator.clone());
                     for (_, ref target) in targets.iter() {
                         cur_bb.add_next(target.as_usize());
                     }
@@ -279,7 +280,8 @@ impl<'tcx> MopGraph<'tcx> {
                     async_fut: _,
                 } => {
                     cur_bb.add_next(target.as_usize());
-                    cur_bb.terminator = Term::Drop(terminator.clone());
+                    //cur_bb.terminator = Term::Drop(terminator.clone());
+                    cur_bb.drop = Some(terminator.clone());
                     if let UnwindAction::Cleanup(target) = unwind {
                         cur_bb.add_next(target.as_usize());
                     }
@@ -302,7 +304,8 @@ impl<'tcx> MopGraph<'tcx> {
                                 || id == manually_drop()
                                 || dealloc_opt().map(|f| f == id).unwrap_or(false)
                             {
-                                cur_bb.terminator = Term::Drop(terminator.clone());
+                                //cur_bb.terminator = Term::Drop(terminator.clone());
+                                cur_bb.drop = Some(terminator.clone())
                             }
                         }
                     }
@@ -312,7 +315,8 @@ impl<'tcx> MopGraph<'tcx> {
                     if let UnwindAction::Cleanup(tt) = unwind {
                         cur_bb.add_next(tt.as_usize());
                     }
-                    cur_bb.terminator = Term::Call(terminator.clone());
+                    //cur_bb.terminator = Term::Call(terminator.clone());
+                    cur_bb.call = Some(terminator.clone());
                 }
 
                 TerminatorKind::Assert {
@@ -476,19 +480,25 @@ impl<'tcx> MopGraph<'tcx> {
     }
 
     pub fn get_switch_conds(&mut self, bb_idx: usize) -> Option<usize> {
+        /*
         let term = &self.blocks[bb_idx].terminator;
         let switch_stmt = match term {
             Term::Switch(s) => s,
             _ => return None,
         };
-        let discr = match &switch_stmt.kind {
-            TerminatorKind::SwitchInt { discr, .. } => discr,
-            _ => return None,
-        };
+        */
+        if let Some(switch) = &self.blocks[bb_idx].switch {
+            let discr = match &switch.kind {
+                TerminatorKind::SwitchInt { discr, .. } => discr,
+                _ => return None,
+            };
 
-        match discr {
-            Operand::Copy(p) | Operand::Move(p) => Some(self.projection(false, *p)),
-            _ => None,
+            match discr {
+                Operand::Copy(p) | Operand::Move(p) => Some(self.projection(false, *p)),
+                _ => None,
+        }
+        } else {
+            None
         }
     }
 }

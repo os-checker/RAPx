@@ -43,7 +43,8 @@ impl<'tcx> MopGraph<'tcx> {
         recursion_set: &mut HashSet<DefId>,
     ) {
         let cur_block = self.blocks[bb_index].clone();
-        if let Term::Call(call) = cur_block.terminator {
+        //if let Term::Call(call) = cur_block.terminator {
+        if let Some(call) = cur_block.call {
             if let TerminatorKind::Call {
                 func: Operand::Constant(ref constant),
                 ref args,

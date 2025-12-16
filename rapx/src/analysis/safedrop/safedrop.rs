@@ -19,7 +19,8 @@ impl<'tcx> SafeDropGraph<'tcx> {
     pub fn drop_check(&mut self, bb_idx: usize, tcx: TyCtxt<'tcx>) {
         let cur_block = self.mop_graph.blocks[bb_idx].clone();
         let is_cleanup = cur_block.is_cleanup;
-        if let Term::Drop(drop) = cur_block.terminator {
+        //if let Term::Drop(drop) = cur_block.terminator {
+        if let Some(drop) = cur_block.drop {
             rap_info!("drop check bb: {}, {:?}", bb_idx, drop);
             match drop.kind {
                 TerminatorKind::Drop {
@@ -201,16 +202,17 @@ impl<'tcx> SafeDropGraph<'tcx> {
         let mut sw_target = 0; // Single target
         let mut path_discr_id = 0; // To avoid analyzing paths that cannot be reached with one enum type.
         let mut sw_targets = None; // Multiple targets of SwitchInt
-        if let Term::Switch(ref switch_stmt) = cur_block.terminator
+        //if let Term::Switch(ref switch_stmt) = cur_block.terminator
+        if let Some(ref switch) = cur_block.switch
             && cur_block.dominated_scc_bbs.is_empty()
         {
             rap_info!("Handle switchInt in bb {:?}", cur_block);
             if let TerminatorKind::SwitchInt {
                 ref discr,
                 ref targets,
-            } = switch_stmt.kind
+            } = switch.kind
             {
-                rap_debug!("{:?}", switch_stmt);
+                rap_debug!("{:?}", switch);
                 rap_debug!("{:?}", self.mop_graph.constants);
                 match discr {
                     Copy(p) | Move(p) => {
