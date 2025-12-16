@@ -9,7 +9,7 @@ use rustc_middle::{
 
 use std::collections::{HashMap, HashSet};
 
-use super::{graph::*, *};
+use super::{block::Term, graph::*, *};
 
 impl<'tcx> MopGraph<'tcx> {
     pub fn split_check(
@@ -125,7 +125,7 @@ impl<'tcx> MopGraph<'tcx> {
         let mut sw_target = 0; // Single target
         let mut path_discr_id = 0; // To avoid analyzing paths that cannot be reached with one enum type.
         let mut sw_targets = None; // Multiple targets of SwitchInt
-        if let Some(switch_stmt) = cur_block.switch_stmt
+        if let Term::Switch(switch_stmt) = cur_block.terminator
             && cur_block.dominated_scc_bbs.is_empty()
         {
             if let TerminatorKind::SwitchInt {

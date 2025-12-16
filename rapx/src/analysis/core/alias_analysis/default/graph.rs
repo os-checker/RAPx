@@ -2,10 +2,7 @@ use super::{MopAAResult, assign::*, block::*, types::*, value::*};
 use crate::{analysis::graphs::scc::Scc, def_id::*, utils::source::*};
 use rustc_data_structures::fx::{FxHashMap, FxHashSet};
 use rustc_middle::{
-    mir::{
-        BasicBlock, Const, Operand, Rvalue, StatementKind, TerminatorKind,
-        UnwindAction,
-    },
+    mir::{BasicBlock, Const, Operand, Rvalue, StatementKind, TerminatorKind, UnwindAction},
     ty::{self, TyCtxt, TypingEnv},
 };
 use rustc_span::{Span, def_id::DefId};
@@ -267,7 +264,7 @@ impl<'tcx> MopGraph<'tcx> {
                     discr: _,
                     ref targets,
                 } => {
-                    cur_bb.switch_stmt = Some(terminator.clone());
+                    cur_bb.terminator = Term::Switch(terminator.clone());
                     for (_, ref target) in targets.iter() {
                         cur_bb.add_next(target.as_usize());
                     }
@@ -282,7 +279,7 @@ impl<'tcx> MopGraph<'tcx> {
                     async_fut: _,
                 } => {
                     cur_bb.add_next(target.as_usize());
-                    cur_bb.drops.push(terminator.clone());
+                    cur_bb.terminator = Term::Drop(terminator.clone());
                     if let UnwindAction::Cleanup(target) = unwind {
                         cur_bb.add_next(target.as_usize());
                     }
@@ -305,7 +302,7 @@ impl<'tcx> MopGraph<'tcx> {
                                 || id == manually_drop()
                                 || dealloc_opt().map(|f| f == id).unwrap_or(false)
                             {
-                                cur_bb.drops.push(terminator.clone());
+                                cur_bb.terminator = Term::Drop(terminator.clone());
                             }
                         }
                     }
@@ -315,7 +312,7 @@ impl<'tcx> MopGraph<'tcx> {
                     if let UnwindAction::Cleanup(tt) = unwind {
                         cur_bb.add_next(tt.as_usize());
                     }
-                    cur_bb.calls.push(terminator.clone());
+                    cur_bb.terminator = Term::Call(terminator.clone());
                 }
 
                 TerminatorKind::Assert {
@@ -478,12 +475,15 @@ impl<'tcx> MopGraph<'tcx> {
         expanded_path
     }
 
-    pub fn get_switch_conds(&mut self, block_index: usize) -> Option<usize> {
-        let block = &self.blocks[block_index];
-        let switch_stmt = block.switch_stmt.as_ref()?;
-
-        let TerminatorKind::SwitchInt { discr, .. } = &switch_stmt.kind else {
-            return None;
+    pub fn get_switch_conds(&mut self, bb_idx: usize) -> Option<usize> {
+        let term = &self.blocks[bb_idx].terminator;
+        let switch_stmt = match term {
+            Term::Switch(s) => s,
+            _ => return None,
+        };
+        let discr = match &switch_stmt.kind {
+            TerminatorKind::SwitchInt { discr, .. } => discr,
+            _ => return None,
         };
 
         match discr {

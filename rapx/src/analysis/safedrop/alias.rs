@@ -5,7 +5,9 @@ use rustc_middle::{
 
 use super::graph::*;
 use crate::analysis::{
-    core::alias_analysis::default::{MopAAFact, MopAAResultMap, assign::*, types::*, value::*},
+    core::alias_analysis::default::{
+        MopAAFact, MopAAResultMap, assign::*, block::Term, types::*, value::*,
+    },
     utils::fn_info::convert_alias_to_sets,
 };
 
@@ -51,7 +53,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
     /* Check the aliases introduced by the terminators (function call) of a scc block */
     pub fn alias_bbcall(&mut self, bb_index: usize, tcx: TyCtxt<'tcx>, fn_map: &MopAAResultMap) {
         let cur_block = self.mop_graph.blocks[bb_index].clone();
-        for call in cur_block.calls {
+        if let Term::Call(call) = cur_block.terminator {
             if let TerminatorKind::Call {
                 ref func,
                 ref args,
@@ -110,7 +112,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
                             } else {
                                 if self.mop_graph.values[lv].may_drop {
                                     if self.corner_handle(lv, &merge_vec, *target_id) {
-                                        continue;
+                                        return;
                                     }
                                     let mut right_set = Vec::new();
                                     for rv in &merge_vec {

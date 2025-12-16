@@ -1,4 +1,4 @@
-use super::{MopAAFact, MopAAResultMap, assign::*, graph::*, types::*, value::*};
+use super::{MopAAFact, MopAAResultMap, assign::*, block::Term, graph::*, types::*, value::*};
 use crate::analysis::graphs::scc::Scc;
 use crate::def_id::*;
 use rustc_hir::def_id::DefId;
@@ -43,7 +43,7 @@ impl<'tcx> MopGraph<'tcx> {
         recursion_set: &mut HashSet<DefId>,
     ) {
         let cur_block = self.blocks[bb_index].clone();
-        for call in cur_block.calls {
+        if let Term::Call(call) = cur_block.terminator {
             if let TerminatorKind::Call {
                 func: Operand::Constant(ref constant),
                 ref args,
@@ -98,7 +98,7 @@ impl<'tcx> MopGraph<'tcx> {
                             } else {
                                 /* Fixed-point iteration: this is not perfect */
                                 if recursion_set.contains(&target_id) {
-                                    continue;
+                                    return;
                                 }
                                 recursion_set.insert(target_id);
                                 let mut mop_graph = MopGraph::new(self.tcx, target_id);
@@ -116,7 +116,7 @@ impl<'tcx> MopGraph<'tcx> {
                             }
                         } else if self.values[lv].may_drop {
                             if target_id == call_mut() {
-                                continue;
+                                return;
                             }
 
                             let mut right_set = Vec::new();
