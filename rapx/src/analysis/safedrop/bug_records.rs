@@ -107,7 +107,7 @@ impl BugRecords {
     }
 
     pub fn dp_bug_output<'tcx>(&self, body: &Body<'tcx>, fn_name: Symbol, span: Span) {
-        // Dangling Pointer (Normal)
+        rap_warn!("fn_name: {:?}; body: {:?}", fn_name, body);
         self.emit_bug_reports(
             body, &self.dp_bugs, fn_name, span,
             "Dangling pointer detected",
@@ -125,7 +125,6 @@ impl BugRecords {
             }
         );
 
-        // Dangling Pointer (Unwind)
         self.emit_bug_reports(
             body, &self.dp_bugs_unwind, fn_name, span,
             "Dangling pointer detected during unwinding",
@@ -170,7 +169,7 @@ impl BugRecords {
             if are_spans_in_same_file(span, bug.span) {
                 let format_debug_info = |id: usize| -> String {
                     let local = Local::from_usize(id);
-                    let name_opt = get_variable_name(body, id); // 假设这个函数在你当前作用域可用
+                    let name_opt = get_variable_name(body, id);
                     let decl_span = body.local_decls[local].source_info.span;
                     let location = format!(
                         "{}:{}",
@@ -195,7 +194,6 @@ impl BugRecords {
 
                 let drop_name = format_debug_info(bug.drop_id);
                 let trigger_name = format_debug_info(bug.trigger_id);
-
                 let drop_bb_str = format_bb_info(bug.drop_bb);
                 let trigger_bb_str = format_bb_info(bug.trigger_bb);
 

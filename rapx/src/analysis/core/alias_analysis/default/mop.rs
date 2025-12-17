@@ -125,8 +125,8 @@ impl<'tcx> MopGraph<'tcx> {
         let mut sw_target = 0; // Single target
         let mut path_discr_id = 0; // To avoid analyzing paths that cannot be reached with one enum type.
         let mut sw_targets = None; // Multiple targets of SwitchInt
-        if let Term::Switch(switch) = cur_block.terminator
-        //if let Some(switch) = cur_block.switch
+        //if let Term::Switch(switch) = cur_block.terminator
+        if let Some(switch) = cur_block.switch
             && cur_block.dominated_scc_bbs.is_empty()
         {
             if let TerminatorKind::SwitchInt {

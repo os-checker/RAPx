@@ -11,7 +11,10 @@ pub struct Block<'tcx> {
     pub assignments: Vec<Assignment<'tcx>>,
     pub const_value: Vec<(usize, usize)>,
     pub assigned_locals: FxHashSet<usize>,
-    pub terminator: Term<'tcx>,
+    //pub terminator: Term<'tcx>,
+    pub call: Option<Terminator<'tcx>>,
+    pub drop: Option<Terminator<'tcx>>,
+    pub switch: Option<Terminator<'tcx>>,
     // If this block is the dominitor of a SCC, we record all basic blocks of the SCC.
     pub dominated_scc_bbs: Vec<usize>,
 }
@@ -33,7 +36,10 @@ impl<'tcx> Block<'tcx> {
             assignments: Vec::<Assignment<'tcx>>::new(),
             const_value: Vec::<(usize, usize)>::new(),
             assigned_locals: FxHashSet::<usize>::default(),
-            terminator: Term::None,
+            //terminator: Term::None,
+            call: None,
+            drop: None,
+            switch: None,
             dominated_scc_bbs: Vec::<usize>::new(),
             //scc_outer: RefCell::new(None),
         }
