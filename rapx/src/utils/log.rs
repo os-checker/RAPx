@@ -1,4 +1,5 @@
 use chrono::Local;
+use rustc_middle::mir::BasicBlock;
 use fern::colors::{Color, ColoredLevelConfig};
 use fern::{self, Dispatch};
 use log::LevelFilter;
@@ -150,7 +151,11 @@ pub fn get_variable_name<'tcx>(
 }
 
 pub fn get_basic_block_span<'tcx>(body: &rustc_middle::mir::Body<'tcx>, bb_index: usize) -> Span {
-    let bb = rustc_middle::mir::BasicBlock::from_usize(bb_index);
+     if bb_index >= body.basic_blocks.len() {
+        return body.span;
+    }
+
+    let bb = BasicBlock::from_usize(bb_index);
     let block_data = &body.basic_blocks[bb];
 
     if let Some(ref term) = block_data.terminator {
