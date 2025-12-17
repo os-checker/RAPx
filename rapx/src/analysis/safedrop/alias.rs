@@ -53,8 +53,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
     /* Check the aliases introduced by the terminators (function call) of a scc block */
     pub fn alias_bbcall(&mut self, bb_index: usize, tcx: TyCtxt<'tcx>, fn_map: &MopAAResultMap) {
         let cur_block = self.mop_graph.blocks[bb_index].clone();
-        //if let Term::Call(call) = cur_block.terminator {
-        if let Some(call) = cur_block.call {
+        if let Term::Call(call) | Term::Drop(call) = cur_block.terminator {
             if let TerminatorKind::Call {
                 ref func,
                 ref args,
