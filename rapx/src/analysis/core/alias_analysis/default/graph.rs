@@ -1,5 +1,9 @@
 use super::{MopAAResult, assign::*, block::*, types::*, value::*};
-use crate::{analysis::graphs::scc::{Scc, SccInfo}, def_id::*, utils::source::*};
+use crate::{
+    analysis::graphs::scc::Scc,
+    def_id::*,
+    utils::source::*,
+};
 use rustc_data_structures::fx::{FxHashMap, FxHashSet};
 use rustc_middle::{
     mir::{BasicBlock, Const, Operand, Rvalue, StatementKind, TerminatorKind, UnwindAction},
@@ -118,9 +122,10 @@ impl<'tcx> MopGraph<'tcx> {
                                                 if let Some(val) =
                                                     const_value.try_to_target_usize(tcx)
                                                 {
-                                                    cur_bb
-                                                        .const_value
-                                                        .push(ConstValue::new(lv_local, val as usize));
+                                                    cur_bb.const_value.push(ConstValue::new(
+                                                        lv_local,
+                                                        val as usize,
+                                                    ));
                                                 }
                                             }
                                             Const::Unevaluated(_const_value, _ty) => {}
@@ -129,9 +134,10 @@ impl<'tcx> MopGraph<'tcx> {
                                                     const_value.try_to_scalar_int()
                                                 {
                                                     let val = scalar.to_uint(scalar.size());
-                                                    cur_bb
-                                                        .const_value
-                                                        .push(ConstValue::new(lv_local, val as usize));
+                                                    cur_bb.const_value.push(ConstValue::new(
+                                                        lv_local,
+                                                        val as usize,
+                                                    ));
                                                 }
                                             }
                                         }
@@ -460,15 +466,13 @@ impl<'tcx> MopGraph<'tcx> {
                 expanded_path.push(scc_idx);
 
                 // b. Then, retrieve the SCC node information
-                let scc_node = &self.blocks[scc_idx];
+                let scc_enter = &self.blocks[scc_idx];
 
                 // c. If it has sub-blocks (i.e., it’s a multi-node SCC),
                 // append all sub-blocks to the path.
                 // dominated_scc_bbs are already ordered (topologically or near-topologically)
-                if let Some(scc) = &scc_node.scc {
-                    if !scc.nodes.is_empty() {
-                        expanded_path.extend_from_slice(&scc.nodes);
-                    }
+                if !scc_enter.scc.nodes.is_empty() {
+                    expanded_path.extend_from_slice(&scc_enter.scc.nodes);
                 }
             } else {
                 // SCC already seen before (e.g., due to a cycle in the path):
@@ -524,29 +528,25 @@ impl<'tcx> SccHelper<'tcx> for MopGraph<'tcx> {
 }
 
 pub fn scc_handler<'tcx, T: SccHelper<'tcx>>(graph: &mut T, root: usize, scc_components: &[usize]) {
-    let mut scc = SccInfo::new(root);
     for &node in &scc_components[1..] {
-        scc.nodes.push(node);
+        graph.blocks_mut()[root].scc.nodes.push(node);
         graph.scc_indices_mut()[node] = root;
-        let nexts = graph.blocks()[node].next.clone();
+        let nexts = graph.blocks_mut()[root].next.clone();
         for i in nexts {
             graph.blocks_mut()[root].next.insert(i);
         }
     }
 
-
     /* remove next nodes which are already in the current SCC */
     let scc_indices = graph.scc_indices().to_vec();
-    graph.blocks_mut()[root]
-        .next
+    graph.blocks_mut()[root].next
         .retain(|i| scc_indices[*i] != root);
 
     /* To ensure a resonable order of blocks within one SCC,
      * so that the scc can be directly used for followup analysis without referencing the
      * original graph.
      * */
-    scc.nodes.reverse();
-    graph.blocks_mut()[root].scc = Some(scc);
+    graph.blocks_mut()[root].scc.nodes.reverse();
 }
 
 impl<'tcx> Scc for MopGraph<'tcx> {

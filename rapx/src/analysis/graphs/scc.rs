@@ -21,8 +21,12 @@ pub struct SccInfo {
 }
 
 impl SccInfo {
-    pub fn new(enter:usize) -> Self {
-        SccInfo { enter, nodes: Vec::<usize>::new(), exits: Vec::<SccExit>::new() }
+    pub fn new(enter: usize) -> Self {
+        SccInfo {
+            enter,
+            nodes: Vec::<usize>::new(),
+            exits: Vec::<SccExit>::new(),
+        }
     }
 }
 

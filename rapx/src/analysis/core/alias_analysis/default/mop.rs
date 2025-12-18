@@ -72,7 +72,7 @@ impl<'tcx> MopGraph<'tcx> {
             self.calculate_scc_order(
                 scc_idx,
                 bb_idx,
-                &mut cur_block.scc.clone().unwrap().nodes,
+                &mut cur_block.scc.clone().nodes,
                 &mut vec![],
                 &mut HashMap::new(),
                 &mut HashSet::new(),
@@ -127,7 +127,7 @@ impl<'tcx> MopGraph<'tcx> {
         let mut sw_targets = None; // Multiple targets of SwitchInt
 
         if let Term::Switch(switch) = cur_block.terminator
-            && let Some(_scc) = cur_block.scc
+            && cur_block.scc.nodes.is_empty()
         {
             if let TerminatorKind::SwitchInt {
                 ref discr,

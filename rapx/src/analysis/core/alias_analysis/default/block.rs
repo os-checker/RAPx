@@ -1,7 +1,7 @@
 use super::assign::*;
+use crate::analysis::graphs::scc::SccInfo;
 use rustc_data_structures::fx::FxHashSet;
 use rustc_middle::mir::Terminator;
-use crate::analysis::graphs::scc::SccInfo;
 
 /// Each block is a strongly-connected component on the control-flow graph.
 #[derive(Debug, Clone)]
@@ -13,9 +13,10 @@ pub struct Block<'tcx> {
     pub const_value: Vec<ConstValue>,
     pub assigned_locals: FxHashSet<usize>,
     pub terminator: Term<'tcx>,
-    /// Only the enter node of a SCC has such information. 
+    /// All nodes belongs to a SCC.
+    /// This field could be a single node SCC.
     /// The loops in the CFG are natural loops, so each SCC has only one enter.
-    pub scc: Option<SccInfo>, 
+    pub scc: SccInfo,
 }
 
 #[derive(Debug, Clone)]
@@ -48,7 +49,7 @@ impl<'tcx> Block<'tcx> {
             const_value: Vec::<ConstValue>::new(),
             assigned_locals: FxHashSet::<usize>::default(),
             terminator: Term::None,
-            scc: None
+            scc: SccInfo::new(index),
         }
     }
 

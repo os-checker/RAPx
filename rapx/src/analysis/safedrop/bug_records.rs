@@ -50,7 +50,6 @@ impl BugRecords {
     }
 
     pub fn df_bugs_output<'tcx>(&self, body: &Body<'tcx>, fn_name: Symbol, span: Span) {
-        // Double Free (Normal)
         self.emit_bug_reports(
             body, &self.df_bugs, fn_name, span,
             "Double free detected",
@@ -68,7 +67,6 @@ impl BugRecords {
             }
         );
 
-        // Double Free (Unwind)
         self.emit_bug_reports(
             body, &self.df_bugs_unwind, fn_name, span,
             "Double free detected",

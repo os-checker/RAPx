@@ -11,6 +11,11 @@ use rustc_span::{Span, symbol::Symbol};
 
 impl<'tcx> SafeDropGraph<'tcx> {
     pub fn report_bugs(&self) {
+        rap_debug!(
+            "report bugs, id: {:?}, uaf: {:?}",
+            self.mop_graph.def_id,
+            self.bug_records.uaf_bugs
+        );
         let filename = get_filename(self.mop_graph.tcx, self.mop_graph.def_id);
         match filename {
             Some(filename) => {
@@ -45,7 +50,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
         );
     }
 
-    pub fn uaf_check(&mut self, bb_idx: usize, idx: usize, span: Span, is_func_call: bool) {
+    pub fn uaf_check(&mut self, bb_idx: usize, idx: usize, span: Span, is_fncall: bool) {
         let local = self.mop_graph.values[idx].local;
         if !self.mop_graph.values[idx].may_drop {
             return;
@@ -68,7 +73,12 @@ impl<'tcx> SafeDropGraph<'tcx> {
         if !self.drop_record[idx].is_dropped {
             return;
         }
-        if self.mop_graph.values[idx].is_ptr() && !is_func_call {
+        rap_debug!(
+            "is_ptr: {}, is_fn_call: {}",
+            self.mop_graph.values[idx].is_ptr(),
+            is_fncall
+        );
+        if self.mop_graph.values[idx].is_ptr() && !is_fncall {
             return;
         }
 

@@ -83,7 +83,6 @@ impl<'tcx> MopGraph<'tcx> {
                     }
                 }
                 if let &ty::FnDef(target_id, _) = constant.const_.ty().kind() {
-                    //if may_drop_flag > 1 || Self::should_check(target_id.clone()) == false {
                     if may_drop_flag > 0 {
                         if self.tcx.is_mir_available(target_id) {
                             rap_debug!("target_id {:?}", target_id);

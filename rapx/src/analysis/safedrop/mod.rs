@@ -67,8 +67,6 @@ pub fn query_safedrop(
         safedrop_graph.check(0, tcx, fn_map);
         if safedrop_graph.mop_graph.visit_times <= VISIT_LIMIT {
             safedrop_graph.report_bugs();
-        } else {
-            println!("Over visited: {:?}", def_id);
         }
     }
 }

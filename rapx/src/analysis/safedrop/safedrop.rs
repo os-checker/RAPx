@@ -148,7 +148,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
             self.mop_graph.calculate_scc_order(
                 scc_idx,
                 bb_idx,
-                &mut cur_block.scc.clone().unwrap().nodes,
+                &mut cur_block.scc.clone().nodes,
                 &mut vec![],
                 &mut HashMap::new(),
                 &mut HashSet::new(),
@@ -202,7 +202,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
         let mut path_discr_id = 0; // To avoid analyzing paths that cannot be reached with one enum type.
         let mut sw_targets = None; // Multiple targets of SwitchInt
         if let Term::Switch(switch) = &cur_block.terminator
-            && let Some(_scc) = &cur_block.scc
+            && cur_block.scc.nodes.is_empty()
         {
             rap_debug!("Handle switchInt in bb {:?}", cur_block);
             if let TerminatorKind::SwitchInt {
@@ -318,7 +318,6 @@ impl<'tcx> SafeDropGraph<'tcx> {
                 }
             }
         }
-        //}
 
         rap_debug!("Values: {:?}", self.mop_graph.values);
         rap_debug!("Alias: {:?}", self.mop_graph.alias_set);
