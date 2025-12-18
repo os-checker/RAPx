@@ -33,7 +33,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
                     if !self.drop_heap_item_check(place, tcx) {
                         return;
                     }
-                    let birth = self.mop_graph.scc_indices[bb_idx];
+                    let birth = self.mop_graph.blocks[bb_idx].scc.enter;
                     let local = self.projection(false, place.clone());
                     let info = drop.source_info.clone();
                     self.add_to_drop_record(local, local, birth, &info, false, bb_idx, is_cleanup);
@@ -42,7 +42,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
                     func: _, ref args, ..
                 } => {
                     if args.len() > 0 {
-                        let birth = self.mop_graph.scc_indices[bb_idx];
+                        let birth = self.mop_graph.blocks[bb_idx].scc.enter;
                         let place = match args[0].node {
                             Operand::Copy(place) => place,
                             Operand::Move(place) => place,
@@ -129,7 +129,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
         if self.mop_graph.visit_times > VISIT_LIMIT {
             return;
         }
-        let scc_idx = self.mop_graph.scc_indices[bb_idx];
+        let scc_idx = self.mop_graph.blocks[bb_idx].scc.enter;
         let cur_block = self.mop_graph.blocks[bb_idx].clone();
         rap_debug!(
             "Checking bb: {}, scc_idx: {}, scc: {:?}",
@@ -137,9 +137,9 @@ impl<'tcx> SafeDropGraph<'tcx> {
             scc_idx,
             cur_block.scc.clone(),
         );
-        self.alias_bb(self.mop_graph.scc_indices[bb_idx]);
-        self.alias_bbcall(self.mop_graph.scc_indices[bb_idx], tcx, fn_map);
-        self.drop_check(self.mop_graph.scc_indices[bb_idx], tcx);
+        self.alias_bb(self.mop_graph.blocks[bb_idx].scc.enter);
+        self.alias_bbcall(self.mop_graph.blocks[bb_idx].scc.enter, tcx, fn_map);
+        self.drop_check(self.mop_graph.blocks[bb_idx].scc.enter, tcx);
 
         if bb_idx == scc_idx {
             let mut paths_in_scc = vec![];

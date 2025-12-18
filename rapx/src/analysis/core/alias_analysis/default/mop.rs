@@ -60,10 +60,10 @@ impl<'tcx> MopGraph<'tcx> {
         if self.visit_times > VISIT_LIMIT {
             return;
         }
-        let scc_idx = self.scc_indices[bb_idx];
+        let scc_idx = self.blocks[bb_idx].scc.enter;
         let cur_block = self.blocks[bb_idx].clone();
-        self.alias_bb(self.scc_indices[bb_idx]);
-        self.alias_bbcall(self.scc_indices[bb_idx], fn_map, recursion_set);
+        self.alias_bb(self.blocks[bb_idx].scc.enter);
+        self.alias_bbcall(self.blocks[bb_idx].scc.enter, fn_map, recursion_set);
 
         if bb_idx == scc_idx {
             let mut paths_in_scc = vec![];

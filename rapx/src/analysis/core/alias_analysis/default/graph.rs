@@ -26,8 +26,6 @@ pub struct MopGraph<'tcx> {
     // Each block is initialized as a basic block of the mir;
     // The blocks are then aggregated into strongly-connected components.
     pub blocks: Vec<Block<'tcx>>,
-    // The scc index of each basic block..
-    pub scc_indices: Vec<usize>,
     // We record the constant value for path sensitivity.
     pub constants: FxHashMap<usize, usize>,
     // We record the decision of enumerate typed values for path sensitivity.
@@ -67,13 +65,11 @@ impl<'tcx> MopGraph<'tcx> {
 
         let basicblocks = &body.basic_blocks;
         let mut blocks = Vec::<Block<'tcx>>::new();
-        let mut scc_indices = Vec::<usize>::new();
         let mut discriminants = FxHashMap::default();
         let mut terminators = Vec::new();
 
         // handle each basicblock
         for i in 0..basicblocks.len() {
-            scc_indices.push(i);
             let bb = &basicblocks[BasicBlock::from(i)];
             let mut cur_bb = Block::new(i, bb.is_cleanup);
 
@@ -387,7 +383,6 @@ impl<'tcx> MopGraph<'tcx> {
             blocks,
             values,
             arg_size,
-            scc_indices,
             alias_set: alias,
             constants: FxHashMap::default(),
             ret_alias: MopAAResult::new(arg_size),
@@ -403,11 +398,11 @@ impl<'tcx> MopGraph<'tcx> {
         stack: &mut Vec<usize>,
         paths: &mut Vec<Vec<usize>>,
     ) {
-        let curr_scc_index = self.scc_indices[index];
-        if self.blocks[curr_scc_index].next.is_empty() {
+        let scc_index = self.blocks[index].scc.enter;
+        if self.blocks[scc_index].next.is_empty() {
             paths.push(stack.to_vec());
         } else {
-            for child in self.blocks[curr_scc_index].next.iter() {
+            for child in self.blocks[scc_index].next.iter() {
                 stack.push(*child);
                 self.dfs_on_spanning_tree(*child, stack, paths);
             }
@@ -455,7 +450,7 @@ impl<'tcx> MopGraph<'tcx> {
 
         for &block_idx in path {
             // 1. Get the representative SCC index of the current basic block
-            let scc_idx = self.scc_indices[block_idx];
+            let scc_idx = self.blocks[block_idx].scc.enter;
 
             // 2. Try inserting scc_idx into the set. If successful (returns true),
             // it means this SCC is encountered for the first time.
@@ -504,8 +499,6 @@ impl<'tcx> MopGraph<'tcx> {
 pub trait SccHelper<'tcx> {
     fn blocks(&self) -> &Vec<Block<'tcx>>; // or whatever the actual type is
     fn blocks_mut(&mut self) -> &mut Vec<Block<'tcx>>;
-    fn scc_indices(&self) -> &[usize];
-    fn scc_indices_mut(&mut self) -> &mut [usize];
     fn switch_conds(&mut self, node: usize) -> Option<usize>;
 }
 
@@ -516,12 +509,6 @@ impl<'tcx> SccHelper<'tcx> for MopGraph<'tcx> {
     fn blocks_mut(&mut self) -> &mut Vec<Block<'tcx>> {
         &mut self.blocks
     }
-    fn scc_indices(&self) -> &[usize] {
-        &self.scc_indices
-    }
-    fn scc_indices_mut(&mut self) -> &mut [usize] {
-        &mut self.scc_indices
-    }
     fn switch_conds(&mut self, node: usize) -> Option<usize> {
         self.get_switch_conds(node)
     }
@@ -530,7 +517,7 @@ impl<'tcx> SccHelper<'tcx> for MopGraph<'tcx> {
 pub fn scc_handler<'tcx, T: SccHelper<'tcx>>(graph: &mut T, root: usize, scc_components: &[usize]) {
     for &node in &scc_components[1..] {
         graph.blocks_mut()[root].scc.nodes.push(node);
-        graph.scc_indices_mut()[node] = root;
+        graph.blocks_mut()[node].scc.enter = root;
         let nexts = graph.blocks_mut()[root].next.clone();
         for i in nexts {
             graph.blocks_mut()[root].next.insert(i);
@@ -538,9 +525,9 @@ pub fn scc_handler<'tcx, T: SccHelper<'tcx>>(graph: &mut T, root: usize, scc_com
     }
 
     /* remove next nodes which are already in the current SCC */
-    let scc_indices = graph.scc_indices().to_vec();
+    let scc_nodes =graph.blocks_mut()[root].scc.nodes.clone();
     graph.blocks_mut()[root].next
-        .retain(|i| scc_indices[*i] != root);
+        .retain(|i| !scc_nodes.contains(i));
 
     /* To ensure a resonable order of blocks within one SCC,
      * so that the scc can be directly used for followup analysis without referencing the
@@ -571,7 +558,6 @@ impl<'tcx> std::fmt::Display for MopGraph<'tcx> {
         writeln!(f, "  blocks: {:?}", self.blocks)?;
         writeln!(f, "  constants: {:?}", self.constants)?;
         writeln!(f, "  discriminants: {:?}", self.discriminants)?;
-        writeln!(f, "  scc_indices: {:?}", self.scc_indices)?;
         writeln!(f, "  terminators: {:?}", self.terminators)?;
         write!(f, "}}")
     }
