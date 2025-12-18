@@ -15,7 +15,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
     /* alias analysis for a single block */
     pub fn alias_bb(&mut self, bb_index: usize) {
         for stmt in self.mop_graph.blocks[bb_index].const_value.clone() {
-            self.mop_graph.constants.insert(stmt.0, stmt.1);
+            self.mop_graph.constants.insert(stmt.def_id, stmt.value);
         }
         let cur_block = self.mop_graph.blocks[bb_index].clone();
         for assign in cur_block.assignments {

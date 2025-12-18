@@ -72,7 +72,7 @@ impl<'tcx> MopGraph<'tcx> {
             self.calculate_scc_order(
                 scc_idx,
                 bb_idx,
-                &mut cur_block.dominated_scc_bbs.clone(),
+                &mut cur_block.scc.clone().unwrap().nodes,
                 &mut vec![],
                 &mut HashMap::new(),
                 &mut HashSet::new(),
@@ -125,8 +125,9 @@ impl<'tcx> MopGraph<'tcx> {
         let mut sw_target = 0; // Single target
         let mut path_discr_id = 0; // To avoid analyzing paths that cannot be reached with one enum type.
         let mut sw_targets = None; // Multiple targets of SwitchInt
+
         if let Term::Switch(switch) = cur_block.terminator
-            && cur_block.dominated_scc_bbs.is_empty()
+            && let Some(_scc) = cur_block.scc
         {
             if let TerminatorKind::SwitchInt {
                 ref discr,

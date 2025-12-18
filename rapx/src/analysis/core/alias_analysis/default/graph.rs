@@ -1,5 +1,5 @@
 use super::{MopAAResult, assign::*, block::*, types::*, value::*};
-use crate::{analysis::graphs::scc::Scc, def_id::*, utils::source::*};
+use crate::{analysis::graphs::scc::{Scc, SccInfo}, def_id::*, utils::source::*};
 use rustc_data_structures::fx::{FxHashMap, FxHashSet};
 use rustc_middle::{
     mir::{BasicBlock, Const, Operand, Rvalue, StatementKind, TerminatorKind, UnwindAction},
@@ -120,7 +120,7 @@ impl<'tcx> MopGraph<'tcx> {
                                                 {
                                                     cur_bb
                                                         .const_value
-                                                        .push((lv_local, val as usize));
+                                                        .push(ConstValue::new(lv_local, val as usize));
                                                 }
                                             }
                                             Const::Unevaluated(_const_value, _ty) => {}
@@ -131,7 +131,7 @@ impl<'tcx> MopGraph<'tcx> {
                                                     let val = scalar.to_uint(scalar.size());
                                                     cur_bb
                                                         .const_value
-                                                        .push((lv_local, val as usize));
+                                                        .push(ConstValue::new(lv_local, val as usize));
                                                 }
                                             }
                                         }
@@ -465,8 +465,10 @@ impl<'tcx> MopGraph<'tcx> {
                 // c. If it has sub-blocks (i.e., it’s a multi-node SCC),
                 // append all sub-blocks to the path.
                 // dominated_scc_bbs are already ordered (topologically or near-topologically)
-                if !scc_node.dominated_scc_bbs.is_empty() {
-                    expanded_path.extend_from_slice(&scc_node.dominated_scc_bbs);
+                if let Some(scc) = &scc_node.scc {
+                    if !scc.nodes.is_empty() {
+                        expanded_path.extend_from_slice(&scc.nodes);
+                    }
                 }
             } else {
                 // SCC already seen before (e.g., due to a cycle in the path):
@@ -522,15 +524,16 @@ impl<'tcx> SccHelper<'tcx> for MopGraph<'tcx> {
 }
 
 pub fn scc_handler<'tcx, T: SccHelper<'tcx>>(graph: &mut T, root: usize, scc_components: &[usize]) {
+    let mut scc = SccInfo::new(root);
     for &node in &scc_components[1..] {
+        scc.nodes.push(node);
         graph.scc_indices_mut()[node] = root;
-        graph.blocks_mut()[root].dominated_scc_bbs.push(node);
-
         let nexts = graph.blocks()[node].next.clone();
         for i in nexts {
             graph.blocks_mut()[root].next.insert(i);
         }
     }
+
 
     /* remove next nodes which are already in the current SCC */
     let scc_indices = graph.scc_indices().to_vec();
@@ -542,7 +545,8 @@ pub fn scc_handler<'tcx, T: SccHelper<'tcx>>(graph: &mut T, root: usize, scc_com
      * so that the scc can be directly used for followup analysis without referencing the
      * original graph.
      * */
-    graph.blocks_mut()[root].dominated_scc_bbs.reverse();
+    scc.nodes.reverse();
+    graph.blocks_mut()[root].scc = Some(scc);
 }
 
 impl<'tcx> Scc for MopGraph<'tcx> {

@@ -194,9 +194,7 @@ impl<'tcx> BodyVisitor<'tcx> {
                     next_block,
                     fn_map,
                 );
-                let tem_basic_blocks = self.safedrop_graph.mop_graph.blocks[*block_index]
-                    .dominated_scc_bbs
-                    .clone();
+                let tem_basic_blocks = if let Some(scc) = &self.safedrop_graph.mop_graph.blocks[*block_index].scc { scc.nodes.clone() } else {Vec::<usize>::new()};
                 // also analyze basic blocks that belong to dominated SCCs
                 if tem_basic_blocks.len() > 0 {
                     for sub_block in &tem_basic_blocks {

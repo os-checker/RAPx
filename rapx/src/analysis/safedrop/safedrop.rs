@@ -20,7 +20,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
         let cur_block = self.mop_graph.blocks[bb_idx].clone();
         let is_cleanup = cur_block.is_cleanup;
         if let Term::Drop(drop) = cur_block.terminator {
-            rap_info!("drop check bb: {}, {:?}", bb_idx, drop);
+            rap_debug!("drop check bb: {}, {:?}", bb_idx, drop);
             match drop.kind {
                 TerminatorKind::Drop {
                     ref place,
@@ -131,11 +131,11 @@ impl<'tcx> SafeDropGraph<'tcx> {
         }
         let scc_idx = self.mop_graph.scc_indices[bb_idx];
         let cur_block = self.mop_graph.blocks[bb_idx].clone();
-        rap_info!(
+        rap_debug!(
             "Checking bb: {}, scc_idx: {}, scc: {:?}",
             bb_idx,
             scc_idx,
-            cur_block.dominated_scc_bbs.clone(),
+            cur_block.scc.clone(),
         );
         self.alias_bb(self.mop_graph.scc_indices[bb_idx]);
         self.alias_bbcall(self.mop_graph.scc_indices[bb_idx], tcx, fn_map);
@@ -148,13 +148,13 @@ impl<'tcx> SafeDropGraph<'tcx> {
             self.mop_graph.calculate_scc_order(
                 scc_idx,
                 bb_idx,
-                &mut cur_block.dominated_scc_bbs.clone(),
+                &mut cur_block.scc.clone().unwrap().nodes,
                 &mut vec![],
                 &mut HashMap::new(),
                 &mut HashSet::new(),
                 &mut paths_in_scc,
             );
-            rap_info!("Paths in scc: {:?}", paths_in_scc);
+            rap_debug!("Paths in scc: {:?}", paths_in_scc);
 
             let backup_values = self.mop_graph.values.clone(); // duplicate the status when visiteding different paths;
             let backup_constant = self.mop_graph.constants.clone();
@@ -173,7 +173,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
                 }
             }
             /* Reach a leaf node, check bugs */
-            rap_info!("cur_block.next: {:?}", cur_block.next);
+            rap_debug!("cur_block.next: {:?}", cur_block.next);
             match cur_block.next.len() {
                 0 => {
                     if Self::should_check(self.mop_graph.def_id) {
@@ -201,10 +201,10 @@ impl<'tcx> SafeDropGraph<'tcx> {
         let mut sw_target = 0; // Single target
         let mut path_discr_id = 0; // To avoid analyzing paths that cannot be reached with one enum type.
         let mut sw_targets = None; // Multiple targets of SwitchInt
-        if let Term::Switch(ref switch) = cur_block.terminator
-            && cur_block.dominated_scc_bbs.is_empty()
+        if let Term::Switch(switch) = &cur_block.terminator
+            && let Some(_scc) = &cur_block.scc
         {
-            rap_info!("Handle switchInt in bb {:?}", cur_block);
+            rap_debug!("Handle switchInt in bb {:?}", cur_block);
             if let TerminatorKind::SwitchInt {
                 ref discr,
                 ref targets,

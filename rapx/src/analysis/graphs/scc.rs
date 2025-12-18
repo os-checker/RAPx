@@ -1,6 +1,31 @@
 use rustc_data_structures::fx::FxHashSet;
 use std::cmp;
 
+#[derive(Debug, Clone)]
+pub struct SccExit {
+    pub exit: usize,
+    pub to: usize,
+}
+
+impl SccExit {
+    pub fn new(exit: usize, to: usize) -> Self {
+        SccExit { exit, to }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct SccInfo {
+    pub enter: usize,
+    pub nodes: Vec<usize>,
+    pub exits: Vec<SccExit>,
+}
+
+impl SccInfo {
+    pub fn new(enter:usize) -> Self {
+        SccInfo { enter, nodes: Vec::<usize>::new(), exits: Vec::<SccExit>::new() }
+    }
+}
+
 pub trait Scc {
     fn find_scc(&mut self) {
         let mut stack = Vec::new();

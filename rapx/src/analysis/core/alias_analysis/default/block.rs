@@ -1,6 +1,7 @@
 use super::assign::*;
 use rustc_data_structures::fx::FxHashSet;
 use rustc_middle::mir::Terminator;
+use crate::analysis::graphs::scc::SccInfo;
 
 /// Each block is a strongly-connected component on the control-flow graph.
 #[derive(Debug, Clone)]
@@ -9,11 +10,12 @@ pub struct Block<'tcx> {
     pub is_cleanup: bool,
     pub next: FxHashSet<usize>,
     pub assignments: Vec<Assignment<'tcx>>,
-    pub const_value: Vec<(usize, usize)>,
+    pub const_value: Vec<ConstValue>,
     pub assigned_locals: FxHashSet<usize>,
     pub terminator: Term<'tcx>,
-    // If this block is the dominitor of a SCC, we record all basic blocks of the SCC.
-    pub dominated_scc_bbs: Vec<usize>,
+    /// Only the enter node of a SCC has such information. 
+    /// The loops in the CFG are natural loops, so each SCC has only one enter.
+    pub scc: Option<SccInfo>, 
 }
 
 #[derive(Debug, Clone)]
@@ -24,6 +26,18 @@ pub enum Term<'tcx> {
     None,
 }
 
+#[derive(Debug, Clone)]
+pub struct ConstValue {
+    pub def_id: usize,
+    pub value: usize,
+}
+
+impl ConstValue {
+    pub fn new(def_id: usize, value: usize) -> Self {
+        ConstValue { def_id, value }
+    }
+}
+
 impl<'tcx> Block<'tcx> {
     pub fn new(index: usize, is_cleanup: bool) -> Block<'tcx> {
         Block {
@@ -31,11 +45,10 @@ impl<'tcx> Block<'tcx> {
             is_cleanup,
             next: FxHashSet::<usize>::default(),
             assignments: Vec::<Assignment<'tcx>>::new(),
-            const_value: Vec::<(usize, usize)>::new(),
+            const_value: Vec::<ConstValue>::new(),
             assigned_locals: FxHashSet::<usize>::default(),
             terminator: Term::None,
-            dominated_scc_bbs: Vec::<usize>::new(),
-            //scc_outer: RefCell::new(None),
+            scc: None
         }
     }
 
