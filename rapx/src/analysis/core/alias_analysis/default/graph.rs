@@ -520,13 +520,16 @@ pub fn scc_handler<'tcx, T: SccHelper<'tcx>>(graph: &mut T, root: usize, scc_com
         graph.blocks_mut()[node].scc.enter = root;
         let nexts = graph.blocks_mut()[root].next.clone();
         for next in nexts {
-            if !scc_components.contains(&next) {
-                //graph.blocks_mut()[root].next.insert(next);
+            if !&scc_components.contains(&next) {
                 let scc_exit = SccExit::new(node, next);
                 graph.blocks_mut()[root].scc.exits.push(scc_exit);
             }
         }
     }
+
+let scc_nodes =graph.blocks_mut()[root].scc.nodes.clone();
+    graph.blocks_mut()[root].next
+                .retain(|i| !scc_nodes.contains(i));
 
     /* To ensure a resonable order of blocks within one SCC,
      * so that the scc can be directly used for followup analysis without referencing the
