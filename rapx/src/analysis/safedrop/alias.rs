@@ -1,6 +1,6 @@
 use rustc_middle::{
     mir::{Operand, Place, ProjectionElem, TerminatorKind},
-    ty::{self, TyCtxt, TypingEnv},
+    ty::{self, TypingEnv},
 };
 
 use super::graph::*;
@@ -51,7 +51,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
     }
 
     /* Check the aliases introduced by the terminators (function call) of a scc block */
-    pub fn alias_bbcall(&mut self, bb_index: usize, tcx: TyCtxt<'tcx>, fn_map: &MopAAResultMap) {
+    pub fn alias_bbcall(&mut self, bb_index: usize, fn_map: &MopAAResultMap) {
         let cur_block = self.mop_graph.blocks[bb_index].clone();
         if let Term::Call(call) | Term::Drop(call) = cur_block.terminator {
             if let TerminatorKind::Call {
@@ -100,7 +100,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
                     }
                     if let ty::FnDef(target_id, _) = constant.const_.ty().kind() {
                         if may_drop_flag > 1 {
-                            if tcx.is_mir_available(*target_id) {
+                            if self.mop_graph.tcx.is_mir_available(*target_id) {
                                 if fn_map.contains_key(&target_id) {
                                     let assignments = fn_map.get(&target_id).unwrap();
                                     for assign in assignments.aliases().iter() {

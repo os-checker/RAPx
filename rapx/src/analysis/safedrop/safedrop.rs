@@ -5,7 +5,7 @@ use rustc_middle::{
         Operand::{self, Constant, Copy, Move},
         Place, TerminatorKind,
     },
-    ty::{TyCtxt, TyKind, TypingEnv},
+    ty::{TyKind, TypingEnv},
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -16,7 +16,7 @@ pub const VISIT_LIMIT: usize = 1000;
 
 impl<'tcx> SafeDropGraph<'tcx> {
     // analyze the drop statement and update the liveness for nodes.
-    pub fn drop_check(&mut self, bb_idx: usize, tcx: TyCtxt<'tcx>) {
+    pub fn drop_check(&mut self, bb_idx: usize) {
         let cur_block = self.mop_graph.blocks[bb_idx].clone();
         let is_cleanup = cur_block.is_cleanup;
         if let Term::Drop(drop) = cur_block.terminator {
@@ -30,7 +30,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
                     drop: _,
                     async_fut: _,
                 } => {
-                    if !self.drop_heap_item_check(place, tcx) {
+                    if !self.drop_heap_item_check(place) {
                         return;
                     }
                     let birth = self.mop_graph.blocks[bb_idx].scc.enter;
@@ -63,7 +63,8 @@ impl<'tcx> SafeDropGraph<'tcx> {
         }
     }
 
-    pub fn drop_heap_item_check(&self, place: &Place<'tcx>, tcx: TyCtxt<'tcx>) -> bool {
+    pub fn drop_heap_item_check(&self, place: &Place<'tcx>) -> bool {
+        let tcx = self.mop_graph.tcx;
         let place_ty = place.ty(&tcx.optimized_mir(self.mop_graph.def_id).local_decls, tcx);
         match place_ty.ty.kind() {
             TyKind::Adt(adtdef, ..) => match self.adt_owner.get(&adtdef.did()) {
@@ -84,13 +85,13 @@ impl<'tcx> SafeDropGraph<'tcx> {
         }
     }
 
-    pub fn split_check(&mut self, bb_idx: usize, tcx: TyCtxt<'tcx>, fn_map: &MopAAResultMap) {
+    pub fn split_check(&mut self, bb_idx: usize, fn_map: &MopAAResultMap) {
         /* duplicate the status before visiteding a path; */
         let backup_values = self.mop_graph.values.clone(); // duplicate the status when visiteding different paths;
         let backup_constant = self.mop_graph.constants.clone();
         let backup_alias_set = self.mop_graph.alias_set.clone();
         let backup_drop_record = self.drop_record.clone();
-        self.check(bb_idx, tcx, fn_map);
+        self.check(bb_idx, fn_map);
         /* restore after visited */
         self.mop_graph.values = backup_values;
         self.mop_graph.constants = backup_constant;
@@ -103,7 +104,6 @@ impl<'tcx> SafeDropGraph<'tcx> {
         bb_idx: usize,
         path_discr_id: usize,
         path_discr_val: usize,
-        tcx: TyCtxt<'tcx>,
         fn_map: &MopAAResultMap,
     ) {
         /* duplicate the status before visiteding a path; */
@@ -115,7 +115,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
         self.mop_graph
             .constants
             .insert(path_discr_id, path_discr_val);
-        self.check(bb_idx, tcx, fn_map);
+        self.check(bb_idx, fn_map);
         /* restore after visited */
         self.mop_graph.values = backup_values;
         self.mop_graph.constants = backup_constant;
@@ -124,7 +124,8 @@ impl<'tcx> SafeDropGraph<'tcx> {
     }
 
     // the core function of the safedrop.
-    pub fn check(&mut self, bb_idx: usize, tcx: TyCtxt<'tcx>, fn_map: &MopAAResultMap) {
+    pub fn check(&mut self, bb_idx: usize, fn_map: &MopAAResultMap) {
+        let tcx = self.mop_graph.tcx;
         self.mop_graph.visit_times += 1;
         if self.mop_graph.visit_times > VISIT_LIMIT {
             return;
@@ -164,8 +165,8 @@ impl<'tcx> SafeDropGraph<'tcx> {
                 if !each_path.is_empty() {
                     for idx in &each_path {
                         self.alias_bb(*idx);
-                        self.alias_bbcall(*idx, tcx, fn_map);
-                        self.drop_check(*idx, tcx);
+                        self.alias_bbcall(*idx, fn_map);
+                        self.drop_check(*idx);
                     }
                 }
                 if let Some(&last_node) = each_path.last() {
@@ -177,15 +178,29 @@ impl<'tcx> SafeDropGraph<'tcx> {
                         .map(|exit_struct| exit_struct.to)
                         .collect();
                     for next in exit_points {
-                        self.check(next, tcx, fn_map);
+                        self.check(next, fn_map);
                     }
                 }
             }
+            // The scc enter can also have exits;
+            /* TO FIX
+            let exit_points: Vec<usize> = cur_block
+                .scc
+                .exits
+                .iter()
+                .filter(|exit_struct| exit_struct.exit == bb_idx)
+                .map(|exit_struct| exit_struct.to)
+                .collect();
+
+            for next in exit_points {
+                self.check(next, fn_map);
+            }
+            */
         } else {
             rap_debug!("check {:?} as a node", bb_idx);
             self.alias_bb(self.mop_graph.blocks[bb_idx].scc.enter);
-            self.alias_bbcall(self.mop_graph.blocks[bb_idx].scc.enter, tcx, fn_map);
-            self.drop_check(self.mop_graph.blocks[bb_idx].scc.enter, tcx);
+            self.alias_bbcall(self.mop_graph.blocks[bb_idx].scc.enter, fn_map);
+            self.drop_check(self.mop_graph.blocks[bb_idx].scc.enter);
 
             // For dangling pointer check;
             // Since a node within an SCC cannot be an exit, we only check for non-scc nodes;
@@ -252,11 +267,8 @@ impl<'tcx> SafeDropGraph<'tcx> {
                         }
                         Constant(c) => {
                             single_target = true;
-                            let ty_env =
-                                TypingEnv::post_analysis(self.mop_graph.tcx, self.mop_graph.def_id);
-                            if let Some(val) =
-                                c.const_.try_eval_target_usize(self.mop_graph.tcx, ty_env)
-                            {
+                            let ty_env = TypingEnv::post_analysis(tcx, self.mop_graph.def_id);
+                            if let Some(val) = c.const_.try_eval_target_usize(tcx, ty_env) {
                                 sw_val = val as usize;
                             }
                         }
@@ -286,7 +298,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
             /* End: finish handling SwitchInt */
             // fixed path since a constant switchInt value
             if single_target {
-                self.check(sw_target, tcx, fn_map);
+                self.check(sw_target, fn_map);
             } else {
                 // Other cases in switchInt terminators
                 if let Some(targets) = sw_targets {
@@ -296,31 +308,19 @@ impl<'tcx> SafeDropGraph<'tcx> {
                         }
                         let next_idx = iter.1.as_usize();
                         let path_discr_val = iter.0 as usize;
-                        self.split_check_with_cond(
-                            next_idx,
-                            path_discr_id,
-                            path_discr_val,
-                            tcx,
-                            fn_map,
-                        );
+                        self.split_check_with_cond(next_idx, path_discr_id, path_discr_val, fn_map);
                     }
                     let all_targets = targets.all_targets();
                     let next_idx = all_targets[all_targets.len() - 1].as_usize();
                     let path_discr_val = usize::MAX; // to indicate the default path;
-                    self.split_check_with_cond(
-                        next_idx,
-                        path_discr_id,
-                        path_discr_val,
-                        tcx,
-                        fn_map,
-                    );
+                    self.split_check_with_cond(next_idx, path_discr_id, path_discr_val, fn_map);
                 } else {
                     for i in &cur_block.next {
                         if self.mop_graph.visit_times > VISIT_LIMIT {
                             continue;
                         }
                         let next_idx = i;
-                        self.split_check(*next_idx, tcx, fn_map);
+                        self.split_check(*next_idx, fn_map);
                     }
                 }
             }
