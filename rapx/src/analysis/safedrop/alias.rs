@@ -66,7 +66,8 @@ impl<'tcx> SafeDropGraph<'tcx> {
             {
                 if let Operand::Constant(constant) = func {
                     let lv = self.projection(false, destination.clone());
-                    self.mop_graph.values[lv].birth = self.mop_graph.blocks[bb_index].scc.enter as isize;
+                    self.mop_graph.values[lv].birth =
+                        self.mop_graph.blocks[bb_index].scc.enter as isize;
                     let mut merge_vec = Vec::new();
                     merge_vec.push(lv);
                     let mut may_drop_flag = 0;

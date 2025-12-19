@@ -137,11 +137,13 @@ impl<'tcx> SafeDropGraph<'tcx> {
             scc_idx,
             cur_block.scc.clone(),
         );
+
         self.alias_bb(self.mop_graph.blocks[bb_idx].scc.enter);
         self.alias_bbcall(self.mop_graph.blocks[bb_idx].scc.enter, tcx, fn_map);
         self.drop_check(self.mop_graph.blocks[bb_idx].scc.enter, tcx);
-
         if bb_idx == scc_idx {
+            // && !cur_block.scc.nodes.is_empty() {
+            // this should allways true
             let mut paths_in_scc = vec![];
 
             /* Handle cases if the current block is a merged scc block with sub block */
@@ -193,8 +195,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
                 }
                 _ => {}
             }
-        } //else {
-
+        }
         /* Begin: handle the SwitchInt statement. */
         let mut single_target = false;
         let mut sw_val = 0;
@@ -318,7 +319,6 @@ impl<'tcx> SafeDropGraph<'tcx> {
                 }
             }
         }
-
         rap_debug!("Values: {:?}", self.mop_graph.values);
         rap_debug!("Alias: {:?}", self.mop_graph.alias_set);
     }
