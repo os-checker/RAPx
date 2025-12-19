@@ -527,6 +527,12 @@ pub fn scc_handler<'tcx, T: SccHelper<'tcx>>(graph: &mut T, root: usize, scc_com
         }
     }
 
+    // This is to ensure the next node should not in the current SCC.
+    let scc_nodes = graph.blocks_mut()[root].scc.nodes.clone();
+    graph.blocks_mut()[root]
+        .next
+        .retain(|i| !scc_nodes.contains(i));
+
     /* To ensure a resonable order of blocks within one SCC,
      * so that the scc can be directly used for followup analysis without referencing the
      * original graph.
