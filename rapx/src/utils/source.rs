@@ -1,7 +1,7 @@
 use rustc_hir::{self, Node::*, def::DefKind};
 use rustc_middle::ty::TyCtxt;
 use rustc_span::{
-    FileName, FileNameDisplayPreference,
+    FileName,
     def_id::{CrateNum, DefId},
     symbol::Symbol,
 };
@@ -77,6 +77,7 @@ pub fn get_filename(tcx: TyCtxt<'_>, def_id: DefId) -> Option<String> {
     None
 }
 
+/*
 fn convert_filename(filename: FileName) -> String {
     match filename {
         FileName::Real(path) => path
@@ -84,6 +85,16 @@ fn convert_filename(filename: FileName) -> String {
             .into_owned(),
         _ => "<unknown>".to_string(),
     }
+}
+*/
+
+fn convert_filename(filename: FileName) -> String {
+    if let FileName::Real(realname) = filename {
+        if let Some(ref path) = realname.local_path() {
+            return path.to_string_lossy().into();
+        }
+    }
+    return "<unknown>".to_string();
 }
 
 pub fn get_module_name(tcx: TyCtxt, def_id: DefId) -> String {

@@ -3,8 +3,10 @@ use fern::colors::{Color, ColoredLevelConfig};
 use fern::{self, Dispatch};
 use log::LevelFilter;
 use rustc_middle::mir::BasicBlock;
-use rustc_span::source_map::get_source_map;
-use rustc_span::{FileNameDisplayPreference, Pos, Span};
+use rustc_span::{
+    source_map::get_source_map,
+    {FileName, Pos, Span},
+};
 use std::ops::Range;
 
 fn log_level() -> LevelFilter {
@@ -120,12 +122,23 @@ pub fn span_to_trimmed_span(span: Span) -> Span {
 }
 
 #[inline]
+/*
 pub fn span_to_filename(span: Span) -> String {
     get_source_map()
         .unwrap()
         .span_to_filename(span)
         .display(FileNameDisplayPreference::Local)
         .to_string()
+}
+*/
+pub fn span_to_filename(span: Span) -> String {
+    let filename = get_source_map().unwrap().span_to_filename(span);
+    if let FileName::Real(realname) = filename {
+        if let Some(ref path) = realname.local_path() {
+            return path.to_string_lossy().into();
+        }
+    }
+    return "<unknown>".to_string();
 }
 
 #[inline]
