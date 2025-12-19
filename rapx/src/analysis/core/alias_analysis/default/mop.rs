@@ -242,21 +242,32 @@ impl<'tcx> MopGraph<'tcx> {
         }
     }
 
-    ///This function performs a DFS traversal across the SCC, extracting all possible orderings
+    /// This function performs a DFS traversal across the SCC, extracting all possible orderings
     /// that respect the control-flow structure and SwitchInt branching, taking into account
     /// enum discriminants and constant branches.
     pub fn calculate_scc_order(
         &mut self,
-        start: usize,
-        cur: usize,
-        scc: &Vec<usize>,
-        path: &mut Vec<usize>,
-        stacked_discriminants: &mut HashMap<usize, usize>,
-        visited: &mut HashSet<usize>, // for cycle detection.
-        paths_in_scc: &mut Vec<Vec<usize>>,
+        start: usize,                                      // The start node of the SCC
+        cur: usize,                                        // The current node in the traversal
+        scc: &Vec<usize>, // The nodes belonging to this SCC (excluding the start node)
+        path: &mut Vec<usize>, // The current path in the DFS traversal
+        stacked_discriminants: &mut HashMap<usize, usize>, // Discriminant restrictions along this path
+        visited: &mut HashSet<usize>, // Nodes visited in the context of this DFS; to avoid cycles.
+        paths_in_scc: &mut Vec<Vec<usize>>, // All paths discovered in the SCC
     ) {
+        if scc.is_empty() {
+            path.push(start);
+            paths_in_scc.push(path.clone());
+            return;
+        }
+
+        if path.is_empty() {
+            // Ensure the start node is included in all paths.
+            path.push(start);
+        }
+
         // If we have returned to the start and the path is non-empty, we've found a cycle/path.
-        if cur == start && !path.is_empty() {
+        if cur == start && path.len() > 1 {
             paths_in_scc.push(path.clone());
             return;
         }

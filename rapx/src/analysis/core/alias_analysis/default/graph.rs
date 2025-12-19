@@ -518,7 +518,7 @@ pub fn scc_handler<'tcx, T: SccHelper<'tcx>>(graph: &mut T, root: usize, scc_com
     for &node in &scc_components[1..] {
         graph.blocks_mut()[root].scc.nodes.push(node);
         graph.blocks_mut()[node].scc.enter = root;
-        let nexts = graph.blocks_mut()[root].next.clone();
+        let nexts = graph.blocks_mut()[node].next.clone();
         for next in nexts {
             if !&scc_components.contains(&next) {
                 let scc_exit = SccExit::new(node, next);
@@ -527,6 +527,13 @@ pub fn scc_handler<'tcx, T: SccHelper<'tcx>>(graph: &mut T, root: usize, scc_com
         }
     }
 
+    let nexts = graph.blocks_mut()[root].next.clone();
+    for next in nexts {
+        if !&scc_components.contains(&next) {
+            let scc_exit = SccExit::new(root, next);
+            graph.blocks_mut()[root].scc.exits.push(scc_exit);
+        }
+    }
     // This is to ensure the next node should not in the current SCC.
     let scc_nodes = graph.blocks_mut()[root].scc.nodes.clone();
     graph.blocks_mut()[root]

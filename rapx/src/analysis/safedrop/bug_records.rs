@@ -105,7 +105,6 @@ impl BugRecords {
     }
 
     pub fn dp_bug_output<'tcx>(&self, body: &Body<'tcx>, fn_name: Symbol, span: Span) {
-        rap_warn!("fn_name: {:?}; body: {:?}", fn_name, body);
         self.emit_bug_reports(
             body, &self.dp_bugs, fn_name, span,
             "Dangling pointer detected",
