@@ -1,4 +1,5 @@
 use super::graph::*;
+use rustc_data_structures::fx::FxHashSet;
 use crate::analysis::core::alias_analysis::default::{MopAAResultMap, block::Term};
 use rustc_middle::{
     mir::{
@@ -11,6 +12,7 @@ use std::{
     collections::{HashMap, HashSet},
     vec,
 };
+
 
 pub const VISIT_LIMIT: usize = 1000;
 
@@ -143,7 +145,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
             self.check_scc(bb_idx, fn_map);
         } else {
             self.check_single_node(bb_idx, fn_map);
-            self.handle_nexts(bb_idx, fn_map);
+            self.handle_nexts(bb_idx, fn_map, &FxHashSet::default(), &Vec::<usize>::new());
         }
     }
 
@@ -192,20 +194,16 @@ impl<'tcx> SafeDropGraph<'tcx> {
         }
 
         // The scc enter can also have exits;
+        // Handle backedges;
         for path in paths_in_scc {
             let mut path_constraints = Vec::new();
             for idx in path {
                 path_constraints.push(idx);
                 if cur_block.scc.backnodes.contains(&idx) {
-                    self.handle_backedge(bb_idx, &path_constraints);
+                    self.handle_nexts(bb_idx, &fn_map, &cur_block.scc.nodes, &path_constraints);
                 }
-                path_constraints.push(bb_idx);
             }
         }
-    }
-
-    pub fn handle_backedge(&mut self, bb_idx: usize, path_constraints: &Vec<usize>) {
-
     }
 
     pub fn check_single_node(&mut self, bb_idx: usize, fn_map: &MopAAResultMap) {
@@ -224,7 +222,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
         }
     }
 
-    pub fn handle_nexts(&mut self, bb_idx: usize, fn_map: &MopAAResultMap) {
+    pub fn handle_nexts(&mut self, bb_idx: usize, fn_map: &MopAAResultMap, exclusive_nodes: &FxHashSet<usize>, path_constraints: &Vec<usize>) {
         let cur_block = self.mop_graph.blocks[bb_idx].clone();
         let tcx = self.mop_graph.tcx;
 
@@ -235,7 +233,6 @@ impl<'tcx> SafeDropGraph<'tcx> {
         let mut path_discr_id = 0; // To avoid analyzing paths that cannot be reached with one enum type.
         let mut sw_targets = None; // Multiple targets of SwitchInt
         if let Term::Switch(switch) = &cur_block.terminator
-            && cur_block.scc.nodes.is_empty()
         {
             rap_debug!("Handle switchInt in bb {:?}", cur_block);
             if let TerminatorKind::SwitchInt {
