@@ -467,7 +467,7 @@ impl<'tcx> MopGraph<'tcx> {
                 // append all sub-blocks to the path.
                 // dominated_scc_bbs are already ordered (topologically or near-topologically)
                 if !scc_enter.scc.nodes.is_empty() {
-                    expanded_path.extend_from_slice(&scc_enter.scc.nodes);
+                    //expanded_path.extend_from_slice(&scc_enter.scc.nodes);
                 }
             } else {
                 // SCC already seen before (e.g., due to a cycle in the path):
@@ -516,13 +516,16 @@ impl<'tcx> SccHelper<'tcx> for MopGraph<'tcx> {
 
 pub fn scc_handler<'tcx, T: SccHelper<'tcx>>(graph: &mut T, root: usize, scc_components: &[usize]) {
     for &node in &scc_components[1..] {
-        graph.blocks_mut()[root].scc.nodes.push(node);
+        graph.blocks_mut()[root].scc.nodes.insert(node);
         graph.blocks_mut()[node].scc.enter = root;
         let nexts = graph.blocks_mut()[node].next.clone();
         for next in nexts {
             if !&scc_components.contains(&next) {
                 let scc_exit = SccExit::new(node, next);
-                graph.blocks_mut()[root].scc.exits.push(scc_exit);
+                graph.blocks_mut()[root].scc.exits.insert(scc_exit);
+            }
+            if next == root {
+                graph.blocks_mut()[root].scc.backnodes.insert(node);
             }
         }
     }
@@ -531,7 +534,7 @@ pub fn scc_handler<'tcx, T: SccHelper<'tcx>>(graph: &mut T, root: usize, scc_com
     for next in nexts {
         if !&scc_components.contains(&next) {
             let scc_exit = SccExit::new(root, next);
-            graph.blocks_mut()[root].scc.exits.push(scc_exit);
+            graph.blocks_mut()[root].scc.exits.insert(scc_exit);
         }
     }
     // This is to ensure the next node should not in the current SCC.
@@ -539,12 +542,6 @@ pub fn scc_handler<'tcx, T: SccHelper<'tcx>>(graph: &mut T, root: usize, scc_com
     graph.blocks_mut()[root]
         .next
         .retain(|i| !scc_nodes.contains(i));
-
-    /* To ensure a resonable order of blocks within one SCC,
-     * so that the scc can be directly used for followup analysis without referencing the
-     * original graph.
-     * */
-    graph.blocks_mut()[root].scc.nodes.reverse();
 }
 
 impl<'tcx> Scc for MopGraph<'tcx> {

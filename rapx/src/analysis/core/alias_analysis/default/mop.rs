@@ -8,6 +8,7 @@ use rustc_middle::{
 };
 
 use std::collections::{HashMap, HashSet};
+use rustc_data_structures::fx::FxHashSet;
 
 use super::{block::Term, graph::*, *};
 
@@ -273,7 +274,7 @@ impl<'tcx> MopGraph<'tcx> {
         &mut self,
         start: usize,                                      // The start node of the SCC
         cur: usize,                                        // The current node in the traversal
-        scc: &Vec<usize>, // The nodes belonging to this SCC (excluding the start node)
+        scc: &FxHashSet<usize>, // The nodes belonging to this SCC (excluding the start node)
         path: &mut Vec<usize>, // The current path in the DFS traversal
         stacked_discriminants: &mut HashMap<usize, usize>, // Discriminant restrictions along this path
         visited: &mut HashSet<usize>, // Nodes visited in the context of this DFS; to avoid cycles.

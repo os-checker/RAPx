@@ -1,7 +1,7 @@
 use rustc_data_structures::fx::FxHashSet;
 use std::cmp;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, Hash, PartialEq)]
 pub struct SccExit {
     pub exit: usize,
     pub to: usize,
@@ -16,16 +16,18 @@ impl SccExit {
 #[derive(Debug, Clone)]
 pub struct SccInfo {
     pub enter: usize,
-    pub nodes: Vec<usize>,
-    pub exits: Vec<SccExit>,
+    pub nodes: FxHashSet<usize>,
+    pub exits: FxHashSet<SccExit>,
+    pub backnodes: FxHashSet<usize>, // The nodes with a backedge
 }
 
 impl SccInfo {
     pub fn new(enter: usize) -> Self {
         SccInfo {
             enter,
-            nodes: Vec::<usize>::new(),
-            exits: Vec::<SccExit>::new(),
+            nodes: FxHashSet::default(),
+            exits: FxHashSet::default(),
+            backnodes: FxHashSet::default(),
         }
     }
 }
