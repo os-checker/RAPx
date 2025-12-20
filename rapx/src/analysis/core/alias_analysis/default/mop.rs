@@ -7,8 +7,8 @@ use rustc_middle::{
     ty::{TyKind, TypingEnv},
 };
 
-use std::collections::{HashMap, HashSet};
 use rustc_data_structures::fx::FxHashSet;
+use std::collections::HashSet;
 
 use super::{block::Term, graph::*, *};
 
@@ -75,8 +75,8 @@ impl<'tcx> MopGraph<'tcx> {
                 bb_idx,
                 &mut cur_block.scc.clone().nodes,
                 &mut vec![],
-                &mut HashMap::new(),
-                &mut HashSet::new(),
+                &mut FxHashMap::default(),
+                &mut FxHashSet::default(),
                 &mut paths_in_scc,
             );
             rap_debug!("Paths in scc: {:?}", paths_in_scc);
@@ -86,20 +86,21 @@ impl<'tcx> MopGraph<'tcx> {
             let backup_alias_set = self.alias_set.clone();
             let backup_fn_map = fn_map.clone();
             let backup_recursion_set = recursion_set.clone();
-            for each_path in paths_in_scc {
+            for raw_path in paths_in_scc {
                 self.alias_set = backup_alias_set.clone();
                 self.values = backup_values.clone();
                 self.constants = backup_constant.clone();
                 *fn_map = backup_fn_map.clone();
                 *recursion_set = backup_recursion_set.clone();
 
-                if !each_path.is_empty() {
-                    for idx in &each_path {
+                let path = raw_path.0;
+                if !path.is_empty() {
+                    for idx in &path {
                         self.alias_bb(*idx);
                         self.alias_bbcall(*idx, fn_map, recursion_set);
                     }
                 }
-                if let Some(&last_node) = each_path.last() {
+                if let Some(&last_node) = path.last() {
                     let mut exit_points: Vec<usize> = cur_block
                         .scc
                         .exits
@@ -272,17 +273,17 @@ impl<'tcx> MopGraph<'tcx> {
     /// enum discriminants and constant branches.
     pub fn calculate_scc_order(
         &mut self,
-        start: usize,                                      // The start node of the SCC
-        cur: usize,                                        // The current node in the traversal
+        start: usize,                                 // The start node of the SCC
+        cur: usize,                                   // The current node in the traversal
         scc: &FxHashSet<usize>, // The nodes belonging to this SCC (excluding the start node)
-        path: &mut Vec<usize>, // The current path in the DFS traversal
-        stacked_discriminants: &mut HashMap<usize, usize>, // Discriminant restrictions along this path
-        visited: &mut HashSet<usize>, // Nodes visited in the context of this DFS; to avoid cycles.
-        paths_in_scc: &mut Vec<Vec<usize>>, // All paths discovered in the SCC
+        path: &mut Vec<usize>,  // The current path in the DFS traversal
+        path_constants: &mut FxHashMap<usize, usize>, // Discriminant restrictions along this path
+        visited: &mut FxHashSet<usize>, // Nodes visited in the context of this DFS; to avoid cycles.
+        paths_in_scc: &mut Vec<(Vec<usize>, FxHashMap<usize, usize>)>, // All paths discovered in the SCC. First field: path; Second field: constants contriants.
     ) {
         if scc.is_empty() {
             path.push(start);
-            paths_in_scc.push(path.clone());
+            paths_in_scc.push((path.clone(), path_constants.clone()));
             return;
         }
 
@@ -293,7 +294,7 @@ impl<'tcx> MopGraph<'tcx> {
 
         // If we have returned to the start and the path is non-empty, we've found a cycle/path.
         if cur == start && path.len() > 1 {
-            paths_in_scc.push(path.clone());
+            paths_in_scc.push((path.clone(), path_constants.clone()));
             return;
         }
         // Mark the current block as visited in this path to avoid cycles in this DFS.
@@ -313,7 +314,7 @@ impl<'tcx> MopGraph<'tcx> {
                             let real_discr_local = *real_discr_local;
                             // There are already restrictions related to the discriminant;
                             // Only the branch that meets the restriction can be taken.
-                            if let Some(constant) = stacked_discriminants.get(&real_discr_local) {
+                            if let Some(constant) = path_constants.get(&real_discr_local) {
                                 let constant = *constant;
                                 for branch in targets.iter() {
                                     // branch is a tupele (value, target)
@@ -328,7 +329,7 @@ impl<'tcx> MopGraph<'tcx> {
                                             target,
                                             scc,
                                             path,
-                                            stacked_discriminants,
+                                            path_constants,
                                             visited,
                                             paths_in_scc,
                                         );
@@ -338,7 +339,7 @@ impl<'tcx> MopGraph<'tcx> {
                             } else {
                                 // No restrictions yet;
                                 // Visit each branch with new condition add to the
-                                // stacked_discriminants.
+                                // path_constants.
                                 for branch in targets.iter() {
                                     let constant = branch.0 as usize;
                                     let target = branch.1.as_usize();
@@ -346,22 +347,22 @@ impl<'tcx> MopGraph<'tcx> {
                                         continue;
                                     }
                                     path.push(target);
-                                    stacked_discriminants.insert(real_discr_local, constant);
+                                    path_constants.insert(real_discr_local, constant);
                                     self.calculate_scc_order(
                                         start,
                                         target,
                                         scc,
                                         path,
-                                        stacked_discriminants,
+                                        path_constants,
                                         visited,
                                         paths_in_scc,
                                     );
-                                    stacked_discriminants.remove(&real_discr_local);
+                                    path_constants.remove(&real_discr_local);
                                     path.pop();
                                 }
                             }
                         } else {
-                            if let Some(constant) = stacked_discriminants.get(&place) {
+                            if let Some(constant) = path_constants.get(&place) {
                                 let constant = *constant;
                                 for t in targets.iter() {
                                     if t.0 as usize == constant {
@@ -375,7 +376,7 @@ impl<'tcx> MopGraph<'tcx> {
                                             target,
                                             scc,
                                             path,
-                                            stacked_discriminants,
+                                            path_constants,
                                             visited,
                                             paths_in_scc,
                                         );
@@ -390,17 +391,17 @@ impl<'tcx> MopGraph<'tcx> {
                                         continue;
                                     }
                                     path.push(target);
-                                    stacked_discriminants.insert(place, constant);
+                                    path_constants.insert(place, constant);
                                     self.calculate_scc_order(
                                         start,
                                         target,
                                         scc,
                                         path,
-                                        stacked_discriminants,
+                                        path_constants,
                                         visited,
                                         paths_in_scc,
                                     );
-                                    stacked_discriminants.remove(&place);
+                                    path_constants.remove(&place);
                                     path.pop();
                                 }
 
@@ -408,17 +409,17 @@ impl<'tcx> MopGraph<'tcx> {
                                 let target = targets.otherwise().as_usize();
                                 if !path.contains(&target) {
                                     path.push(target);
-                                    stacked_discriminants.insert(place, constant);
+                                    path_constants.insert(place, constant);
                                     self.calculate_scc_order(
                                         start,
                                         target,
                                         scc,
                                         path,
-                                        stacked_discriminants,
+                                        path_constants,
                                         visited,
                                         paths_in_scc,
                                     );
-                                    stacked_discriminants.remove(&place);
+                                    path_constants.remove(&place);
                                     path.pop();
                                 }
                             }
@@ -439,7 +440,7 @@ impl<'tcx> MopGraph<'tcx> {
                             next,
                             scc,
                             path,
-                            stacked_discriminants,
+                            path_constants,
                             visited,
                             paths_in_scc,
                         );
@@ -450,7 +451,7 @@ impl<'tcx> MopGraph<'tcx> {
                             next,
                             scc,
                             path,
-                            stacked_discriminants,
+                            path_constants,
                             visited,
                             paths_in_scc,
                         );

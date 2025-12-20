@@ -1,6 +1,6 @@
 use super::graph::*;
-use rustc_data_structures::fx::FxHashSet;
 use crate::analysis::core::alias_analysis::default::{MopAAResultMap, block::Term};
+use rustc_data_structures::fx::{FxHashMap, FxHashSet};
 use rustc_middle::{
     mir::{
         Operand::{self, Constant, Copy, Move},
@@ -8,11 +8,7 @@ use rustc_middle::{
     },
     ty::{TyKind, TypingEnv},
 };
-use std::{
-    collections::{HashMap, HashSet},
-    vec,
-};
-
+use std::vec;
 
 pub const VISIT_LIMIT: usize = 1000;
 
@@ -145,7 +141,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
             self.check_scc(bb_idx, fn_map);
         } else {
             self.check_single_node(bb_idx, fn_map);
-            self.handle_nexts(bb_idx, fn_map, &FxHashSet::default(), &Vec::<usize>::new());
+            self.handle_nexts(bb_idx, fn_map, None, None);
         }
     }
 
@@ -158,8 +154,8 @@ impl<'tcx> SafeDropGraph<'tcx> {
             bb_idx,
             &mut cur_block.scc.clone().nodes,
             &mut vec![],
-            &mut HashMap::new(),
-            &mut HashSet::new(),
+            &mut FxHashMap::default(),
+            &mut FxHashSet::default(),
             &mut paths_in_scc,
         );
         rap_debug!("Paths in scc: {:?}", paths_in_scc);
@@ -167,10 +163,13 @@ impl<'tcx> SafeDropGraph<'tcx> {
         let backup_values = self.mop_graph.values.clone(); // duplicate the status when visiteding different paths;
         let backup_constant = self.mop_graph.constants.clone();
         let backup_alias_set = self.mop_graph.alias_set.clone();
-        for path in &paths_in_scc {
+        for raw_path in &paths_in_scc {
             self.mop_graph.alias_set = backup_alias_set.clone();
             self.mop_graph.values = backup_values.clone();
             self.mop_graph.constants = backup_constant.clone();
+
+            let path = &raw_path.0;
+            let path_constants = &raw_path.1;
 
             if !path.is_empty() {
                 for idx in path {
@@ -190,17 +189,16 @@ impl<'tcx> SafeDropGraph<'tcx> {
                 for next in exit_points {
                     self.check(next, fn_map);
                 }
-            }
-        }
 
-        // The scc enter can also have exits;
-        // Handle backedges;
-        for path in paths_in_scc {
-            let mut path_constraints = Vec::new();
-            for idx in path {
-                path_constraints.push(idx);
-                if cur_block.scc.backnodes.contains(&idx) {
-                   // self.handle_nexts(bb_idx, &fn_map, &cur_block.scc.nodes, &path_constraints);
+                // The scc enter can also have exits;
+                // Handle backedges;
+                if cur_block.scc.backnodes.contains(&last_node) {
+                    self.handle_nexts(
+                        bb_idx,
+                        &fn_map,
+                        Some(&cur_block.scc.nodes),
+                        Some(path_constants),
+                    );
                 }
             }
         }
@@ -222,9 +220,20 @@ impl<'tcx> SafeDropGraph<'tcx> {
         }
     }
 
-    pub fn handle_nexts(&mut self, bb_idx: usize, fn_map: &MopAAResultMap, exclusive_nodes: &FxHashSet<usize>, path_constraints: &Vec<usize>) {
+    pub fn handle_nexts(
+        &mut self,
+        bb_idx: usize,
+        fn_map: &MopAAResultMap,
+        exclusive_nodes: Option<&FxHashSet<usize>>,
+        path_constraints: Option<&FxHashMap<usize, usize>>,
+    ) {
         let cur_block = self.mop_graph.blocks[bb_idx].clone();
         let tcx = self.mop_graph.tcx;
+
+        // Extra path contraints are introduced during scc handling.
+        if let Some(path_constants) = path_constraints {
+           self.mop_graph.constants.extend(path_constants);
+        }
 
         /* Begin: handle the SwitchInt statement. */
         let mut single_target = false;
@@ -232,8 +241,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
         let mut sw_target = 0; // Single target
         let mut path_discr_id = 0; // To avoid analyzing paths that cannot be reached with one enum type.
         let mut sw_targets = None; // Multiple targets of SwitchInt
-        if let Term::Switch(switch) = &cur_block.terminator
-        {
+        if let Term::Switch(switch) = &cur_block.terminator {
             rap_debug!("Handle switchInt in bb {:?}", cur_block);
             if let TerminatorKind::SwitchInt {
                 ref discr,
@@ -313,8 +321,15 @@ impl<'tcx> SafeDropGraph<'tcx> {
         /* End: finish handling SwitchInt */
         // fixed path since a constant switchInt value
         if single_target {
-            if !exclusive_nodes.contains(&sw_target) {
-                self.check(sw_target, fn_map);
+            match exclusive_nodes {
+                Some(exclusive) => {
+                    if !exclusive.contains(&sw_target) {
+                        self.check(sw_target, fn_map);
+                    }
+                }
+                None => {
+                    self.check(sw_target, fn_map);
+                }
             }
         } else {
             // Other cases in switchInt terminators
@@ -324,8 +339,14 @@ impl<'tcx> SafeDropGraph<'tcx> {
                         continue;
                     }
                     let next = iter.1.as_usize();
-                    if exclusive_nodes.contains(&next) {
-                        continue;
+
+                    match exclusive_nodes {
+                        Some(exclusive) => {
+                            if exclusive.contains(&next) {
+                                continue;
+                            }
+                        }
+                        None => {}
                     }
                     let path_discr_val = iter.0 as usize;
                     self.split_check_with_cond(next, path_discr_id, path_discr_val, fn_map);
@@ -339,8 +360,14 @@ impl<'tcx> SafeDropGraph<'tcx> {
                     if self.mop_graph.visit_times > VISIT_LIMIT {
                         continue;
                     }
-                    if exclusive_nodes.contains(next) {
-                        continue;
+
+                    match exclusive_nodes {
+                        Some(exclusive) => {
+                            if exclusive.contains(&next) {
+                                continue;
+                            }
+                        }
+                        None => {}
                     }
                     self.split_check(*next, fn_map);
                 }
