@@ -165,19 +165,19 @@ impl<'tcx> SafeDropGraph<'tcx> {
         let backup_values = self.mop_graph.values.clone(); // duplicate the status when visiteding different paths;
         let backup_constant = self.mop_graph.constants.clone();
         let backup_alias_set = self.mop_graph.alias_set.clone();
-        for each_path in &paths_in_scc {
+        for path in &paths_in_scc {
             self.mop_graph.alias_set = backup_alias_set.clone();
             self.mop_graph.values = backup_values.clone();
             self.mop_graph.constants = backup_constant.clone();
 
-            if !each_path.is_empty() {
-                for idx in each_path {
+            if !path.is_empty() {
+                for idx in path {
                     self.alias_bb(*idx);
                     self.alias_bbcall(*idx, fn_map);
                     self.drop_check(*idx);
                 }
             }
-            if let Some(&last_node) = each_path.last() {
+            if let Some(&last_node) = path.last() {
                 let exit_points: Vec<usize> = cur_block
                     .scc
                     .exits
@@ -190,13 +190,24 @@ impl<'tcx> SafeDropGraph<'tcx> {
                 }
             }
         }
+
         // The scc enter can also have exits;
-        self.handle_backedge(bb_idx, &paths_in_scc);
+        for path in paths_in_scc {
+            let mut path_constraints = Vec::new();
+            for idx in path {
+                path_constraints.push(idx);
+                if cur_block.scc.backnodes.contains(&idx) {
+                    self.handle_backedge(bb_idx, &path_constraints);
+                }
+                path_constraints.push(bb_idx);
+            }
+        }
     }
 
-    pub fn handle_backedge(&mut self, bb_idx: usize, paths_in_scc: &Vec<Vec<usize>>) {
-        // TO DO
+    pub fn handle_backedge(&mut self, bb_idx: usize, path_constraints: &Vec<usize>) {
+
     }
+
     pub fn check_single_node(&mut self, bb_idx: usize, fn_map: &MopAAResultMap) {
         let cur_block = self.mop_graph.blocks[bb_idx].clone();
         rap_debug!("check {:?} as a node", bb_idx);
