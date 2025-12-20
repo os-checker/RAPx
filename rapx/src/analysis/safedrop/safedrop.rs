@@ -200,7 +200,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
             for idx in path {
                 path_constraints.push(idx);
                 if cur_block.scc.backnodes.contains(&idx) {
-                    self.handle_nexts(bb_idx, &fn_map, &cur_block.scc.nodes, &path_constraints);
+                   // self.handle_nexts(bb_idx, &fn_map, &cur_block.scc.nodes, &path_constraints);
                 }
             }
         }
@@ -313,7 +313,9 @@ impl<'tcx> SafeDropGraph<'tcx> {
         /* End: finish handling SwitchInt */
         // fixed path since a constant switchInt value
         if single_target {
-            self.check(sw_target, fn_map);
+            if !exclusive_nodes.contains(&sw_target) {
+                self.check(sw_target, fn_map);
+            }
         } else {
             // Other cases in switchInt terminators
             if let Some(targets) = sw_targets {
@@ -321,21 +323,26 @@ impl<'tcx> SafeDropGraph<'tcx> {
                     if self.mop_graph.visit_times > VISIT_LIMIT {
                         continue;
                     }
-                    let next_idx = iter.1.as_usize();
+                    let next = iter.1.as_usize();
+                    if exclusive_nodes.contains(&next) {
+                        continue;
+                    }
                     let path_discr_val = iter.0 as usize;
-                    self.split_check_with_cond(next_idx, path_discr_id, path_discr_val, fn_map);
+                    self.split_check_with_cond(next, path_discr_id, path_discr_val, fn_map);
                 }
                 let all_targets = targets.all_targets();
                 let next_idx = all_targets[all_targets.len() - 1].as_usize();
                 let path_discr_val = usize::MAX; // to indicate the default path;
                 self.split_check_with_cond(next_idx, path_discr_id, path_discr_val, fn_map);
             } else {
-                for i in &cur_block.next {
+                for next in &cur_block.next {
                     if self.mop_graph.visit_times > VISIT_LIMIT {
                         continue;
                     }
-                    let next_idx = i;
-                    self.split_check(*next_idx, fn_map);
+                    if exclusive_nodes.contains(next) {
+                        continue;
+                    }
+                    self.split_check(*next, fn_map);
                 }
             }
         }
