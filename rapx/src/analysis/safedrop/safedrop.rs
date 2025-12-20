@@ -232,7 +232,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
 
         // Extra path contraints are introduced during scc handling.
         if let Some(path_constants) = path_constraints {
-           self.mop_graph.constants.extend(path_constants);
+            self.mop_graph.constants.extend(path_constants);
         }
 
         /* Begin: handle the SwitchInt statement. */
