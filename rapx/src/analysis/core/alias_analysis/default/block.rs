@@ -11,7 +11,8 @@ pub struct Block<'tcx> {
     pub next: FxHashSet<usize>,
     pub assignments: Vec<Assignment<'tcx>>,
     pub const_value: Vec<ConstValue>,
-    pub assigned_locals: FxHashSet<usize>,
+    // Used in scc handling: to clear the assignments of the enter node.
+    pub assigned_locals: FxHashSet<usize>, 
     pub terminator: Term<'tcx>,
     /// All nodes belongs to a SCC.
     /// This field could be a single node SCC.
@@ -29,13 +30,13 @@ pub enum Term<'tcx> {
 
 #[derive(Debug, Clone)]
 pub struct ConstValue {
-    pub def_id: usize,
+    pub local: usize,
     pub value: usize,
 }
 
 impl ConstValue {
-    pub fn new(def_id: usize, value: usize) -> Self {
-        ConstValue { def_id, value }
+    pub fn new(local: usize, value: usize) -> Self {
+        ConstValue { local, value }
     }
 }
 

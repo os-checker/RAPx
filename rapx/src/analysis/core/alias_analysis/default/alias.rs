@@ -11,8 +11,8 @@ use std::collections::HashSet;
 impl<'tcx> MopGraph<'tcx> {
     /* alias analysis for a single block */
     pub fn alias_bb(&mut self, bb_index: usize) {
-        for stmt in self.blocks[bb_index].const_value.clone() {
-            self.constants.insert(stmt.def_id, stmt.value);
+        for constant in self.blocks[bb_index].const_value.clone() {
+            self.constants.insert(constant.local, constant.value);
         }
         let cur_block = self.blocks[bb_index].clone();
         for assign in cur_block.assignments {

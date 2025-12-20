@@ -233,6 +233,12 @@ impl<'tcx> SafeDropGraph<'tcx> {
         // Extra path contraints are introduced during scc handling.
         if let Some(path_constants) = path_constraints {
             self.mop_graph.constants.extend(path_constants);
+            // We should reset the constant introduced when entering the scc, so that it can go out the scc.
+            // This can be achieved by removing the constant entries related to the locals assigned in
+            // the scc enter node.
+            for local in &self.mop_graph.blocks[bb_idx].assigned_locals {
+                self.mop_graph.constants.remove(&local);
+            }
         }
 
         /* Begin: handle the SwitchInt statement. */

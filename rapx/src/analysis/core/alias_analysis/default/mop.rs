@@ -168,7 +168,13 @@ impl<'tcx> MopGraph<'tcx> {
 
         // Extra path contraints are introduced during scc handling.
         if let Some(path_constants) = path_constraints {
-            //self.constants.extend(path_constants);
+            self.constants.extend(path_constants);
+            // We should reset the constant introduced when entering the scc, so that it can go out the scc.
+            // This can be achieved by removing the constant entries related to the locals assigned in
+            // the scc enter node.
+            for local in &self.blocks[bb_idx].assigned_locals {
+                self.constants.remove(&local);
+            }
         }
         /* Begin: handle the SwitchInt statement. */
         let mut single_target = false;
