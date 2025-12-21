@@ -23,6 +23,10 @@ impl<'tcx> SafeDropGraph<'tcx> {
         for assign in cur_block.assignments {
             let mut lv_idx = self.projection(false, assign.lv);
             let rv_idx = self.projection(true, assign.rv);
+            // We should perform uaf check before alias analysis.
+            // Example: *1 = 4; when *1 is dangling.
+            // Perfoming alias analysis first would introduce false positives.
+            self.uaf_check(bb_index, rv_idx, assign.span, false);
             match assign.atype {
                 AssignType::Variant => {
                     self.mop_graph.alias_set[lv_idx] = rv_idx;
@@ -49,7 +53,13 @@ impl<'tcx> SafeDropGraph<'tcx> {
                     convert_alias_to_sets(self.mop_graph.alias_set.clone())
                 );
             }
-            self.uaf_check(bb_index, rv_idx, assign.span, false);
+            // If the left value is dangling while the right value is not,
+            // The left vaule is no more danling after this assignment.
+            // We should bring remove it from the drop record, as well as its aliases.
+            if self.drop_record[lv_idx].is_dropped && !self.drop_record[rv_idx].is_dropped {
+                self.drop_record[lv_idx] = DropRecord::false_record();
+                //todo: sync all aliases of lv_idx.
+            }
         }
     }
 
