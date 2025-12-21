@@ -143,6 +143,27 @@ fn test_false_field_clone1() {
 }
 
 #[test]
+fn test_false_mutate() {
+    #[allow(unused)]
+    let output = running_tests_with_arg("uaf/false_mutate", "-F");
+    assert_eq!(output.contains("detected"), false);
+}
+
+#[test]
+fn test_false_loop_drop() {
+    #[allow(unused)]
+    let output = running_tests_with_arg("uaf/false_loop_drop", "-F");
+    assert_eq!(output.contains("detected"), false);
+}
+
+#[test]
+fn test_reference() {
+    #[allow(unused)]
+    let output = running_tests_with_arg("uaf/false_reference", "-F");
+    //assert_eq!(output.contains("detected"), false);
+}
+
+#[test]
 fn test_alias_not_alias_iter() {
     let output = running_tests_with_arg("alias/not_alias_iter", "-alias");
     assert_eq!(output.contains("foo\": null"), true);
