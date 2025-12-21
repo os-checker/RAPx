@@ -58,7 +58,12 @@ impl<'tcx> SafeDropGraph<'tcx> {
             // We should bring remove it from the drop record, as well as its aliases.
             if self.drop_record[lv_idx].is_dropped && !self.drop_record[rv_idx].is_dropped {
                 self.drop_record[lv_idx] = DropRecord::false_record();
-                //todo: sync all aliases of lv_idx.
+                // Synchronize the status of its aliases as not dropped.
+                for i in 0..self.mop_graph.values.len() {
+                    if self.mop_graph.union_is_same(lv_idx, i) {
+                        self.drop_record[i] = DropRecord::false_record();
+                    }
+                }
             }
         }
     }
