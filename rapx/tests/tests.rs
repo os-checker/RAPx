@@ -17,6 +17,7 @@ fn running_tests_with_arg(dir: &str, arg: &str) -> String {
     String::from_utf8_lossy(&output.stderr).into_owned()
 }
 
+// ================Dangling Pointer Detection Test=====================
 #[test]
 fn test_dangling_min() {
     let output = running_tests_with_arg("uaf/dangling_min", "-F");
@@ -157,12 +158,27 @@ fn test_false_loop_drop() {
 }
 
 #[test]
+fn test_false_vec() {
+    #[allow(unused)]
+    let output = running_tests_with_arg("uaf/false_vec", "-F");
+    assert_eq!(output.contains("detected"), false);
+}
+
+#[test]
+fn test_false_memtake() {
+    #[allow(unused)]
+    let output = running_tests_with_arg("uaf/false_memtake", "-F");
+    //assert_eq!(output.contains("detected"), false);
+}
+
+#[test]
 fn test_reference() {
     #[allow(unused)]
     let output = running_tests_with_arg("uaf/false_reference", "-F");
     //assert_eq!(output.contains("detected"), false);
 }
 
+// ===============Alias Analysis Test==============
 #[test]
 fn test_alias_not_alias_iter() {
     let output = running_tests_with_arg("alias/not_alias_iter", "-alias");
