@@ -6,7 +6,7 @@ use rustc_middle::{
 use super::graph::*;
 use crate::analysis::{
     core::alias_analysis::default::{
-        MopAAFact, MopAAResultMap, assign::*, block::Term, types::*, value::*,
+        MopAAFact, MopAAResultMap, assign::*, block::Term, corner_case::*, types::*, value::*,
     },
     utils::fn_info::convert_alias_to_sets,
 };
@@ -118,6 +118,11 @@ impl<'tcx> SafeDropGraph<'tcx> {
                     }
                     if let ty::FnDef(target_id, _) = constant.const_.ty().kind() {
                         if may_drop_flag > 1 {
+                            // This function does not introduce new aliases.
+
+                            if is_corner_case(*target_id) {
+                                return;
+                            }
                             if self.mop_graph.tcx.is_mir_available(*target_id) {
                                 if fn_map.contains_key(&target_id) {
                                     let assignments = fn_map.get(&target_id).unwrap();
@@ -130,9 +135,6 @@ impl<'tcx> SafeDropGraph<'tcx> {
                                 }
                             } else {
                                 if self.mop_graph.values[lv].may_drop {
-                                    if self.corner_handle(lv, &merge_vec, *target_id) {
-                                        return;
-                                    }
                                     let mut right_set = Vec::new();
                                     for rv in &merge_vec {
                                         if self.mop_graph.values[*rv].may_drop

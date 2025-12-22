@@ -1,4 +1,4 @@
-use super::graph::*;
+use super::{corner_case::*, graph::*};
 use crate::analysis::core::alias_analysis::default::{MopAAResultMap, block::Term};
 use rustc_data_structures::fx::{FxHashMap, FxHashSet};
 use rustc_middle::{
@@ -214,7 +214,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
         // For dangling pointer check;
         // Since a node within an SCC cannot be an exit, we only check for non-scc nodes;
         if cur_block.next.is_empty() {
-            if Self::should_check(self.mop_graph.def_id) {
+            if should_check(self.mop_graph.def_id) {
                 self.dp_check(cur_block.is_cleanup);
             }
         }

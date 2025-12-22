@@ -161,7 +161,7 @@ fn test_false_loop_drop() {
 fn test_false_memtake() {
     #[allow(unused)]
     let output = running_tests_with_arg("uaf/false_memtake", "-F");
-    //assert_eq!(output.contains("detected"), false);
+    assert_eq!(output.contains("detected"), false);
 }
 
 #[test]

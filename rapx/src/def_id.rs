@@ -146,6 +146,22 @@ intrinsics! {
         "std::mem::ManuallyDrop::<T>::drop",
         "core::mem::ManuallyDrop::<T>::drop"
     ],
+    replace: &[
+        "std::mem::replace",
+        "core::mem::replace"
+    ],
+    take: &[
+        "std::mem::take",
+        "core::mem::take"
+    ],
+    read_via_copy: &[
+        "std::intrinsics::read_via_copy",
+        "core::intrinsics::read_via_copy"
+    ],
+    write_via_copy: &[
+        "std::intrinsics::write_via_move",
+        "core::intrinsics::write_via_move"
+    ],
 }
 
 /// rustc_public DefId to internal DefId

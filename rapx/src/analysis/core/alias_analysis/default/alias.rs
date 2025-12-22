@@ -1,6 +1,7 @@
-use super::{MopAAFact, MopAAResultMap, assign::*, block::Term, graph::*, types::*, value::*};
+use super::{
+    MopAAFact, MopAAResultMap, assign::*, block::Term, corner_case::*, graph::*, types::*, value::*,
+};
 use crate::analysis::graphs::scc::Scc;
-use crate::def_id::*;
 use rustc_hir::def_id::DefId;
 use rustc_middle::{
     mir::{Operand, Place, ProjectionElem, TerminatorKind},
@@ -84,6 +85,10 @@ impl<'tcx> MopGraph<'tcx> {
                 }
                 if let &ty::FnDef(target_id, _) = constant.const_.ty().kind() {
                     if may_drop_flag > 0 {
+                        // This function does not introduce new aliases.
+                        if is_corner_case(target_id) {
+                            return;
+                        }
                         if self.tcx.is_mir_available(target_id) {
                             rap_debug!("target_id {:?}", target_id);
                             if fn_map.contains_key(&target_id) {
@@ -114,10 +119,6 @@ impl<'tcx> MopGraph<'tcx> {
                                 recursion_set.remove(&target_id);
                             }
                         } else if self.values[lv].may_drop {
-                            if target_id == call_mut() || target_id == clone() {
-                                return;
-                            }
-
                             let mut right_set = Vec::new();
                             for rv in &merge_vec {
                                 if self.values[*rv].may_drop

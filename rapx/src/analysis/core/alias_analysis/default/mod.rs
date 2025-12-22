@@ -1,6 +1,7 @@
 pub mod alias;
 pub mod assign;
 pub mod block;
+pub mod corner_case;
 pub mod graph;
 pub mod mop;
 pub mod types;
