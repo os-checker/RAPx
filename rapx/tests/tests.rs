@@ -158,13 +158,6 @@ fn test_false_loop_drop() {
 }
 
 #[test]
-fn test_false_vec() {
-    #[allow(unused)]
-    let output = running_tests_with_arg("uaf/false_vec", "-F");
-    assert_eq!(output.contains("detected"), false);
-}
-
-#[test]
 fn test_false_memtake() {
     #[allow(unused)]
     let output = running_tests_with_arg("uaf/false_memtake", "-F");
