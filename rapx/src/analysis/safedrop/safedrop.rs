@@ -49,6 +49,9 @@ impl<'tcx> SafeDropGraph<'tcx> {
                                 return;
                             }
                         };
+                        if !self.drop_heap_item_check(&place) {
+                            return;
+                        }
                         let local = self.projection(false, place.clone());
                         let info = drop.source_info.clone();
                         self.add_to_drop_record(

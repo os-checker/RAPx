@@ -168,7 +168,7 @@ fn test_false_memtake() {
 fn test_reference() {
     #[allow(unused)]
     let output = running_tests_with_arg("uaf/false_reference", "-F");
-    //assert_eq!(output.contains("detected"), false);
+    assert_eq!(output.contains("detected"), false);
 }
 
 // ===============Alias Analysis Test==============
