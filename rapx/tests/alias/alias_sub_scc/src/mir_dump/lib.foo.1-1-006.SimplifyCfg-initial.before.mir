@@ -1,0 +1,322 @@
+// MIR for `foo` before SimplifyCfg-initial
+
+fn foo(_1: *mut i32, _2: *mut i32, _3: Selector) -> *mut i32 {
+    debug x => _1;
+    debug y => _2;
+    debug choice => _3;
+    let mut _0: *mut i32;
+    let mut _4: *mut i32;
+    let _5: ();
+    let mut _6: ();
+    let mut _7: bool;
+    let mut _8: i32;
+    let mut _10: isize;
+    let _11: ();
+    let mut _13: isize;
+    let mut _14: (i32, bool);
+    let mut _15: *mut i32;
+    let _16: ();
+    let mut _17: bool;
+    let mut _18: i32;
+    let mut _19: !;
+    let mut _20: *mut i32;
+    let mut _21: isize;
+    let mut _22: bool;
+    let mut _23: i32;
+    let mut _24: !;
+    let mut _25: !;
+    let _26: ();
+    let mut _27: !;
+    scope 1 {
+        debug r => _4;
+        let mut _9: *mut i32;
+        scope 2 {
+            debug p => _9;
+            let _12: *mut i32;
+            scope 3 {
+                debug q => _12;
+            }
+        }
+    }
+
+    bb0: {
+        StorageLive(_4);
+        _4 = copy _1;
+        FakeRead(ForLet(None), _4);
+        StorageLive(_5);
+        goto -> bb1;
+    }
+
+    bb1: {
+        falseUnwind -> [real: bb2, unwind: bb50];
+    }
+
+    bb2: {
+        StorageLive(_7);
+        StorageLive(_8);
+        _8 = copy (*_4);
+        _7 = Gt(move _8, const 0_i32);
+        switchInt(move _7) -> [0: bb4, otherwise: bb3];
+    }
+
+    bb3: {
+        StorageDead(_8);
+        StorageLive(_9);
+        PlaceMention(_3);
+        _10 = discriminant(_3);
+        switchInt(move _10) -> [0: bb6, 1: bb8, otherwise: bb5];
+    }
+
+    bb4: {
+        goto -> bb42;
+    }
+
+    bb5: {
+        FakeRead(ForMatchedPlace(None), _3);
+        unreachable;
+    }
+
+    bb6: {
+        falseEdge -> [real: bb10, imaginary: bb8];
+    }
+
+    bb7: {
+        goto -> bb5;
+    }
+
+    bb8: {
+        _9 = copy _2;
+        goto -> bb11;
+    }
+
+    bb9: {
+        goto -> bb5;
+    }
+
+    bb10: {
+        _9 = copy _1;
+        goto -> bb11;
+    }
+
+    bb11: {
+        FakeRead(ForLet(None), _9);
+        StorageLive(_11);
+        goto -> bb12;
+    }
+
+    bb12: {
+        falseUnwind -> [real: bb13, unwind: bb50];
+    }
+
+    bb13: {
+        StorageLive(_12);
+        PlaceMention(_3);
+        _13 = discriminant(_3);
+        switchInt(move _13) -> [0: bb15, 1: bb17, otherwise: bb14];
+    }
+
+    bb14: {
+        FakeRead(ForMatchedPlace(None), _3);
+        unreachable;
+    }
+
+    bb15: {
+        falseEdge -> [real: bb19, imaginary: bb17];
+    }
+
+    bb16: {
+        goto -> bb14;
+    }
+
+    bb17: {
+        _12 = copy _1;
+        goto -> bb20;
+    }
+
+    bb18: {
+        goto -> bb14;
+    }
+
+    bb19: {
+        _12 = copy _9;
+        goto -> bb20;
+    }
+
+    bb20: {
+        FakeRead(ForLet(None), _12);
+        _14 = SubWithOverflow(copy (*_12), const 1_i32);
+        assert(!move (_14.1: bool), "attempt to compute `{} - {}`, which would overflow", copy (*_12), const 1_i32) -> [success: bb21, unwind: bb50];
+    }
+
+    bb21: {
+        (*_12) = move (_14.0: i32);
+        StorageLive(_15);
+        _15 = copy _12;
+        _4 = move _15;
+        StorageDead(_15);
+        StorageLive(_16);
+        StorageLive(_17);
+        StorageLive(_18);
+        _18 = copy (*_4);
+        _17 = Le(move _18, const 1_i32);
+        switchInt(move _17) -> [0: bb23, otherwise: bb22];
+    }
+
+    bb22: {
+        StorageDead(_18);
+        _11 = const ();
+        goto -> bb35;
+    }
+
+    bb23: {
+        goto -> bb26;
+    }
+
+    bb24: {
+        unreachable;
+    }
+
+    bb25: {
+        goto -> bb27;
+    }
+
+    bb26: {
+        StorageDead(_18);
+        _16 = const ();
+        goto -> bb27;
+    }
+
+    bb27: {
+        StorageDead(_17);
+        StorageDead(_16);
+        StorageLive(_20);
+        PlaceMention(_3);
+        _21 = discriminant(_3);
+        switchInt(move _21) -> [0: bb29, 1: bb31, otherwise: bb28];
+    }
+
+    bb28: {
+        FakeRead(ForMatchedPlace(None), _3);
+        unreachable;
+    }
+
+    bb29: {
+        falseEdge -> [real: bb33, imaginary: bb31];
+    }
+
+    bb30: {
+        goto -> bb28;
+    }
+
+    bb31: {
+        _20 = copy _2;
+        goto -> bb34;
+    }
+
+    bb32: {
+        goto -> bb28;
+    }
+
+    bb33: {
+        _20 = copy _1;
+        goto -> bb34;
+    }
+
+    bb34: {
+        _9 = move _20;
+        StorageDead(_20);
+        _6 = const ();
+        StorageDead(_12);
+        goto -> bb12;
+    }
+
+    bb35: {
+        StorageDead(_17);
+        StorageDead(_16);
+        StorageDead(_12);
+        StorageDead(_11);
+        StorageLive(_22);
+        StorageLive(_23);
+        _23 = copy (*_4);
+        _22 = Eq(move _23, const 0_i32);
+        switchInt(move _22) -> [0: bb37, otherwise: bb36];
+    }
+
+    bb36: {
+        StorageDead(_23);
+        _5 = const ();
+        goto -> bb48;
+    }
+
+    bb37: {
+        goto -> bb40;
+    }
+
+    bb38: {
+        unreachable;
+    }
+
+    bb39: {
+        goto -> bb41;
+    }
+
+    bb40: {
+        StorageDead(_23);
+        _6 = const ();
+        goto -> bb41;
+    }
+
+    bb41: {
+        StorageDead(_22);
+        StorageDead(_9);
+        goto -> bb46;
+    }
+
+    bb42: {
+        StorageDead(_8);
+        StorageLive(_26);
+        _5 = const ();
+        goto -> bb47;
+    }
+
+    bb43: {
+        unreachable;
+    }
+
+    bb44: {
+        StorageDead(_26);
+        unreachable;
+    }
+
+    bb45: {
+        goto -> bb46;
+    }
+
+    bb46: {
+        StorageDead(_7);
+        goto -> bb1;
+    }
+
+    bb47: {
+        StorageDead(_26);
+        goto -> bb49;
+    }
+
+    bb48: {
+        StorageDead(_22);
+        StorageDead(_9);
+        goto -> bb49;
+    }
+
+    bb49: {
+        StorageDead(_7);
+        StorageDead(_5);
+        _0 = copy _4;
+        StorageDead(_4);
+        return;
+    }
+
+    bb50 (cleanup): {
+        resume;
+    }
+}

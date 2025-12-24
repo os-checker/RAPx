@@ -41,3 +41,6 @@ fn foo(x: *mut i32, y: *mut i32, choice: Selector) -> *mut i32 {
 
     r
 }
+
+fn main(){
+}

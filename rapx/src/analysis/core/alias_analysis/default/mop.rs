@@ -1,8 +1,8 @@
 use rustc_hir::def_id::DefId;
 use rustc_middle::{
     mir::{
-        Operand::{Constant, Copy, Move},
-        TerminatorKind,
+        Operand::{self, Constant, Copy, Move},
+        SwitchTargets, TerminatorKind,
     },
     ty::{TyKind, TypingEnv},
 };
@@ -83,6 +83,7 @@ impl<'tcx> MopGraph<'tcx> {
         let mut paths_in_scc = vec![];
 
         /* Handle cases if the current block is a merged scc block with sub block */
+        rap_info!("Find paths in scc: {:?}, {:?}", bb_idx, cur_block.scc);
         self.calculate_scc_order(
             bb_idx,
             bb_idx,
@@ -92,7 +93,7 @@ impl<'tcx> MopGraph<'tcx> {
             &mut FxHashSet::default(),
             &mut paths_in_scc,
         );
-        rap_debug!("Paths in scc: {:?}", paths_in_scc);
+        rap_info!("Paths in scc: {:?}", paths_in_scc);
 
         let backup_values = self.values.clone(); // duplicate the status when visiteding different paths;
         let backup_constant = self.constants.clone();
@@ -326,160 +327,45 @@ impl<'tcx> MopGraph<'tcx> {
     /// enum discriminants and constant branches.
     pub fn calculate_scc_order(
         &mut self,
-        start: usize,                                 // The start node of the SCC
-        cur: usize,                                   // The current node in the traversal
-        scc: &FxHashSet<usize>, // The nodes belonging to this SCC (excluding the start node)
-        path: &mut Vec<usize>,  // The current path in the DFS traversal
-        path_constants: &mut FxHashMap<usize, usize>, // Discriminant restrictions along this path
-        visited: &mut FxHashSet<usize>, // Nodes visited in the context of this DFS; to avoid cycles.
-        paths_in_scc: &mut Vec<(Vec<usize>, FxHashMap<usize, usize>)>, // All paths discovered in the SCC. First field: path; Second field: constants contriants.
+        start: usize,
+        cur: usize,
+        scc: &FxHashSet<usize>,
+        path: &mut Vec<usize>,
+        path_constants: &mut FxHashMap<usize, usize>,
+        visited: &mut FxHashSet<usize>,
+        paths_in_scc: &mut Vec<(Vec<usize>, FxHashMap<usize, usize>)>,
     ) {
         if scc.is_empty() {
             path.push(start);
             paths_in_scc.push((path.clone(), path_constants.clone()));
             return;
         }
-
         if path.is_empty() {
-            // Ensure the start node is included in all paths.
             path.push(start);
         }
-
-        // If we have returned to the start and the path is non-empty, we've found a cycle/path.
         if cur == start && path.len() > 1 {
             paths_in_scc.push((path.clone(), path_constants.clone()));
             return;
         }
-        // Mark the current block as visited in this path to avoid cycles in this DFS.
-        visited.insert(cur);
-        // Retrieve the terminator for this block (the outgoing control flow).
+        if !visited.insert(cur) {
+            return;
+        } // already visited, avoid cycle
+
         let term = &self.terminators[cur].clone();
 
         match term {
             TerminatorKind::SwitchInt { discr, targets } => {
-                match discr {
-                    // Case 1: The discriminant is a place (value held in memory, e.g., enum field)
-                    Copy(p) | Move(p) => {
-                        let place = self.projection(false, *p);
-                        if let Some(real_discr_local) =
-                            self.discriminants.get(&self.values[place].local)
-                        {
-                            let real_discr_local = *real_discr_local;
-                            // There are already restrictions related to the discriminant;
-                            // Only the branch that meets the restriction can be taken.
-                            if let Some(constant) = path_constants.get(&real_discr_local) {
-                                let constant = *constant;
-                                for branch in targets.iter() {
-                                    // branch is a tupele (value, target)
-                                    if branch.0 as usize == constant {
-                                        let target = branch.1.as_usize();
-                                        if path.contains(&target) {
-                                            continue;
-                                        }
-                                        path.push(target);
-                                        self.calculate_scc_order(
-                                            start,
-                                            target,
-                                            scc,
-                                            path,
-                                            path_constants,
-                                            visited,
-                                            paths_in_scc,
-                                        );
-                                        path.pop();
-                                    }
-                                }
-                            } else {
-                                // No restrictions yet;
-                                // Visit each branch with new condition add to the
-                                // path_constants.
-                                for branch in targets.iter() {
-                                    let constant = branch.0 as usize;
-                                    let target = branch.1.as_usize();
-                                    if path.contains(&target) {
-                                        continue;
-                                    }
-                                    path.push(target);
-                                    path_constants.insert(real_discr_local, constant);
-                                    self.calculate_scc_order(
-                                        start,
-                                        target,
-                                        scc,
-                                        path,
-                                        path_constants,
-                                        visited,
-                                        paths_in_scc,
-                                    );
-                                    path_constants.remove(&real_discr_local);
-                                    path.pop();
-                                }
-                            }
-                        } else {
-                            if let Some(constant) = path_constants.get(&place) {
-                                let constant = *constant;
-                                for t in targets.iter() {
-                                    if t.0 as usize == constant {
-                                        let target = t.1.as_usize();
-                                        if path.contains(&target) {
-                                            continue;
-                                        }
-                                        path.push(target);
-                                        self.calculate_scc_order(
-                                            start,
-                                            target,
-                                            scc,
-                                            path,
-                                            path_constants,
-                                            visited,
-                                            paths_in_scc,
-                                        );
-                                        path.pop();
-                                    }
-                                }
-                            } else {
-                                for t in targets.iter() {
-                                    let constant = t.0 as usize;
-                                    let target = t.1.as_usize();
-                                    if path.contains(&target) {
-                                        continue;
-                                    }
-                                    path.push(target);
-                                    path_constants.insert(place, constant);
-                                    self.calculate_scc_order(
-                                        start,
-                                        target,
-                                        scc,
-                                        path,
-                                        path_constants,
-                                        visited,
-                                        paths_in_scc,
-                                    );
-                                    path_constants.remove(&place);
-                                    path.pop();
-                                }
-
-                                let constant = targets.iter().len();
-                                let target = targets.otherwise().as_usize();
-                                if !path.contains(&target) {
-                                    path.push(target);
-                                    path_constants.insert(place, constant);
-                                    self.calculate_scc_order(
-                                        start,
-                                        target,
-                                        scc,
-                                        path,
-                                        path_constants,
-                                        visited,
-                                        paths_in_scc,
-                                    );
-                                    path_constants.remove(&place);
-                                    path.pop();
-                                }
-                            }
-                        }
-                    }
-                    _ => {}
-                }
+                self.handle_switch_int_case(
+                    start,
+                    cur,
+                    path,
+                    scc,
+                    path_constants,
+                    visited,
+                    paths_in_scc,
+                    discr,
+                    targets,
+                );
             }
             _ => {
                 for next in self.blocks[cur].next.clone() {
@@ -513,5 +399,92 @@ impl<'tcx> MopGraph<'tcx> {
             }
         }
         visited.remove(&cur);
+    }
+
+    fn handle_switch_int_case(
+        &mut self,
+        start: usize,
+        _cur: usize,
+        path: &mut Vec<usize>,
+        scc: &FxHashSet<usize>,
+        path_constants: &mut FxHashMap<usize, usize>,
+        visited: &mut FxHashSet<usize>,
+        paths_in_scc: &mut Vec<(Vec<usize>, FxHashMap<usize, usize>)>,
+        discr: &Operand<'tcx>,
+        targets: &SwitchTargets,
+    ) {
+        let place = match discr {
+            Copy(p) | Move(p) => Some(self.projection(false, *p)),
+            _ => None,
+        };
+
+        if let Some(place) = place {
+            let discr_local = self
+                .discriminants
+                .get(&self.values[place].local)
+                .cloned()
+                .unwrap_or(place);
+
+            if let Some(&constant) = path_constants.get(&discr_local) {
+                // Only the branch matching constant
+                targets
+                    .iter()
+                    .filter(|t| t.0 as usize == constant)
+                    .for_each(|branch| {
+                        let target = branch.1.as_usize();
+                        if !path.contains(&target) {
+                            path.push(target);
+                            self.calculate_scc_order(
+                                start,
+                                target,
+                                scc,
+                                path,
+                                path_constants,
+                                visited,
+                                paths_in_scc,
+                            );
+                            path.pop();
+                        }
+                    });
+            } else {
+                // No restriction, try each branch
+                for branch in targets.iter() {
+                    let constant = branch.0 as usize;
+                    let target = branch.1.as_usize();
+                    if !path.contains(&target) {
+                        path.push(target);
+                        path_constants.insert(discr_local, constant);
+                        self.calculate_scc_order(
+                            start,
+                            target,
+                            scc,
+                            path,
+                            path_constants,
+                            visited,
+                            paths_in_scc,
+                        );
+                        path_constants.remove(&discr_local);
+                        path.pop();
+                    }
+                }
+                // Handle default branch
+                let target = targets.otherwise().as_usize();
+                if !path.contains(&target) {
+                    path.push(target);
+                    path_constants.insert(discr_local, targets.iter().len());
+                    self.calculate_scc_order(
+                        start,
+                        target,
+                        scc,
+                        path,
+                        path_constants,
+                        visited,
+                        paths_in_scc,
+                    );
+                    path_constants.remove(&discr_local);
+                    path.pop();
+                }
+            }
+        }
     }
 }
