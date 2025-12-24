@@ -83,7 +83,7 @@ impl<'tcx> MopGraph<'tcx> {
         let mut paths_in_scc = vec![];
 
         /* Handle cases if the current block is a merged scc block with sub block */
-        rap_info!("Find paths in scc: {:?}, {:?}", bb_idx, cur_block.scc);
+        rap_debug!("Find paths in scc: {:?}, {:?}", bb_idx, cur_block.scc);
         self.calculate_scc_order(
             bb_idx,
             bb_idx,
@@ -93,7 +93,7 @@ impl<'tcx> MopGraph<'tcx> {
             &mut FxHashSet::default(),
             &mut paths_in_scc,
         );
-        rap_info!("Paths in scc: {:?}", paths_in_scc);
+        rap_debug!("Paths in scc: {:?}", paths_in_scc);
 
         let backup_values = self.values.clone(); // duplicate the status when visiteding different paths;
         let backup_constant = self.constants.clone();
@@ -167,6 +167,11 @@ impl<'tcx> MopGraph<'tcx> {
         let cur_block = self.blocks[bb_idx].clone();
         let tcx = self.tcx;
 
+        rap_debug!(
+            "handle nexts {:?} of node {:?}",
+            self.blocks[bb_idx].next,
+            bb_idx
+        );
         // Extra path contraints are introduced during scc handling.
         if let Some(path_constants) = path_constraints {
             self.constants.extend(path_constants);
@@ -184,73 +189,91 @@ impl<'tcx> MopGraph<'tcx> {
         let mut path_discr_id = 0; // To avoid analyzing paths that cannot be reached with one enum type.
         let mut sw_targets = None; // Multiple targets of SwitchInt
 
-        if let Term::Switch(switch) = cur_block.terminator {
-            if let TerminatorKind::SwitchInt {
-                ref discr,
-                ref targets,
-            } = switch.kind
-            {
-                match discr {
-                    Copy(p) | Move(p) => {
-                        let place = self.projection(false, *p);
-                        let local_decls = &tcx.optimized_mir(self.def_id).local_decls;
-                        let place_ty = (*p).ty(local_decls, tcx);
-                        rap_debug!("place {:?}", place);
-                        match place_ty.ty.kind() {
-                            TyKind::Bool => {
-                                if let Some(constant) = self.constants.get(&place) {
-                                    if *constant != usize::MAX {
-                                        single_target = true;
-                                        sw_val = *constant;
-                                    }
-                                }
-                                path_discr_id = place;
-                                sw_targets = Some(targets.clone());
-                            }
-                            _ => {
-                                if let Some(father) =
-                                    self.discriminants.get(&self.values[place].local)
-                                {
-                                    if let Some(constant) = self.constants.get(father) {
+        match cur_block.terminator {
+            Term::Switch(switch) => {
+                if let TerminatorKind::SwitchInt {
+                    ref discr,
+                    ref targets,
+                } = switch.kind
+                {
+                    match discr {
+                        Copy(p) | Move(p) => {
+                            let place = self.projection(false, *p);
+                            let local_decls = &tcx.optimized_mir(self.def_id).local_decls;
+                            let place_ty = (*p).ty(local_decls, tcx);
+                            rap_debug!("place {:?}", place);
+                            match place_ty.ty.kind() {
+                                TyKind::Bool => {
+                                    if let Some(constant) = self.constants.get(&place) {
                                         if *constant != usize::MAX {
                                             single_target = true;
                                             sw_val = *constant;
                                         }
                                     }
-                                    if self.values[place].local == place {
-                                        path_discr_id = *father;
-                                        sw_targets = Some(targets.clone());
+                                    path_discr_id = place;
+                                    sw_targets = Some(targets.clone());
+                                }
+                                _ => {
+                                    if let Some(father) =
+                                        self.discriminants.get(&self.values[place].local)
+                                    {
+                                        if let Some(constant) = self.constants.get(father) {
+                                            if *constant != usize::MAX {
+                                                single_target = true;
+                                                sw_val = *constant;
+                                            }
+                                        }
+                                        if self.values[place].local == place {
+                                            path_discr_id = *father;
+                                            sw_targets = Some(targets.clone());
+                                        }
                                     }
                                 }
                             }
                         }
+                        Constant(c) => {
+                            single_target = true;
+                            let ty_env = TypingEnv::post_analysis(tcx, self.def_id);
+                            if let Some(val) = c.const_.try_eval_target_usize(tcx, ty_env) {
+                                sw_val = val as usize;
+                            }
+                        }
                     }
-                    Constant(c) => {
-                        single_target = true;
-                        let ty_env = TypingEnv::post_analysis(tcx, self.def_id);
-                        if let Some(val) = c.const_.try_eval_target_usize(tcx, ty_env) {
-                            sw_val = val as usize;
+                    if single_target {
+                        /* Find the target based on the value;
+                         * Since sw_val is a const, only one target is reachable.
+                         * Filed 0 is the value; field 1 is the real target.
+                         */
+                        for iter in targets.iter() {
+                            if iter.0 as usize == sw_val {
+                                sw_target = iter.1.as_usize();
+                                break;
+                            }
+                        }
+                        /* No target found, choose the default target.
+                         * The default targets is not included within the iterator.
+                         * We can only obtain the default target based on the last item of all_targets().
+                         */
+                        if sw_target == 0 {
+                            let all_target = targets.all_targets();
+                            sw_target = all_target[all_target.len() - 1].as_usize();
                         }
                     }
                 }
-                if single_target {
-                    /* Find the target based on the value;
-                     * Since sw_val is a const, only one target is reachable.
-                     * Filed 0 is the value; field 1 is the real target.
-                     */
-                    for iter in targets.iter() {
-                        if iter.0 as usize == sw_val {
-                            sw_target = iter.1.as_usize();
-                            break;
+            }
+            _ => {
+                // Not SwitchInt
+                rap_debug!("not a switchInt: {:?}", cur_block.next);
+                for next in &cur_block.next {
+                    match exclusive_nodes {
+                        Some(exclusive) => {
+                            if !exclusive.contains(next) {
+                                self.check(*next, fn_map, recursion_set);
+                            }
                         }
-                    }
-                    /* No target found, choose the default target.
-                     * The default targets is not included within the iterator.
-                     * We can only obtain the default target based on the last item of all_targets().
-                     */
-                    if sw_target == 0 {
-                        let all_target = targets.all_targets();
-                        sw_target = all_target[all_target.len() - 1].as_usize();
+                        None => {
+                            self.check(*next, fn_map, recursion_set);
+                        }
                     }
                 }
             }
@@ -335,7 +358,9 @@ impl<'tcx> MopGraph<'tcx> {
         visited: &mut FxHashSet<usize>,
         paths_in_scc: &mut Vec<(Vec<usize>, FxHashMap<usize, usize>)>,
     ) {
+        rap_debug!("calculate_scc_order");
         if scc.is_empty() {
+            rap_debug!("scc is empty");
             path.push(start);
             paths_in_scc.push((path.clone(), path_constants.clone()));
             return;
@@ -343,9 +368,16 @@ impl<'tcx> MopGraph<'tcx> {
         if path.is_empty() {
             path.push(start);
         }
-        if cur == start && path.len() > 1 {
-            paths_in_scc.push((path.clone(), path_constants.clone()));
-            return;
+        if path.len() > 1 {
+            if cur == start {
+                paths_in_scc.push((path.clone(), path_constants.clone()));
+                return;
+            }
+            if !scc.contains(&cur) {
+                path.pop();
+                paths_in_scc.push((path.clone(), path_constants.clone()));
+                return;
+            }
         }
         if !visited.insert(cur) {
             return;
@@ -353,8 +385,10 @@ impl<'tcx> MopGraph<'tcx> {
 
         let term = &self.terminators[cur].clone();
 
+        rap_debug!("term: {:?}", term);
         match term {
             TerminatorKind::SwitchInt { discr, targets } => {
+                rap_debug!("handle_switch_int_case: {:?}, {:?}", discr, targets);
                 self.handle_switch_int_case(
                     start,
                     cur,
@@ -368,11 +402,26 @@ impl<'tcx> MopGraph<'tcx> {
                 );
             }
             _ => {
+                rap_debug!("not switchInt");
+                rap_debug!(
+                    "handle nexts of bb {:?}: {:?}",
+                    cur,
+                    self.blocks[cur].next.clone()
+                );
                 for next in self.blocks[cur].next.clone() {
-                    if !scc.contains(&next) && next != start {
-                        continue;
-                    }
-                    if next != start {
+                    // next does not belong to the scc; or we return to the start.
+                    // report a new path.
+                    if !scc.contains(&next) || next == start {
+                        self.calculate_scc_order(
+                            start,
+                            next,
+                            scc,
+                            path,
+                            path_constants,
+                            visited,
+                            paths_in_scc,
+                        );
+                    } else {
                         path.push(next);
                         self.calculate_scc_order(
                             start,
@@ -384,16 +433,6 @@ impl<'tcx> MopGraph<'tcx> {
                             paths_in_scc,
                         );
                         path.pop();
-                    } else {
-                        self.calculate_scc_order(
-                            start,
-                            next,
-                            scc,
-                            path,
-                            path_constants,
-                            visited,
-                            paths_in_scc,
-                        );
                     }
                 }
             }

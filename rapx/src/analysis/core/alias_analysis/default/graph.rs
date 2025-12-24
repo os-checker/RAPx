@@ -458,20 +458,11 @@ impl<'tcx> MopGraph<'tcx> {
 
     pub fn dfs_on_spanning_tree(
         &self,
-        index: usize,
-        stack: &mut Vec<usize>,
-        paths: &mut Vec<Vec<usize>>,
+        _index: usize,
+        _stack: &mut Vec<usize>,
+        _paths: &mut Vec<Vec<usize>>,
     ) {
-        let scc_index = self.blocks[index].scc.enter;
-        if self.blocks[scc_index].next.is_empty() {
-            paths.push(stack.to_vec());
-        } else {
-            for child in self.blocks[scc_index].next.iter() {
-                stack.push(*child);
-                self.dfs_on_spanning_tree(*child, stack, paths);
-            }
-        }
-        stack.pop();
+        // TOBE REMOVED!
     }
 
     pub fn get_paths(&self) -> Vec<Vec<usize>> {
@@ -602,10 +593,12 @@ pub fn scc_handler<'tcx, T: SccHelper<'tcx>>(graph: &mut T, root: usize, scc_com
         }
     }
     // This is to ensure the next node should not in the current SCC.
+    /*
     let scc_nodes = graph.blocks_mut()[root].scc.nodes.clone();
     graph.blocks_mut()[root]
         .next
         .retain(|i| !scc_nodes.contains(i));
+    */
 }
 
 impl<'tcx> Scc for MopGraph<'tcx> {
